@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "unreal-handshake": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "D:/PersonalGameDev/One-Night-One-Loop/Dawnlight/Plugins/UnrealGenAISupport/Content/Python/mcp_server.py"
+      ],
+      "env": {
+        "UNREAL_HOST": "localhost",
+        "UNREAL_PORT": "9877"
+      }
+    }
+  }
+}

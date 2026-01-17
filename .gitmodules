@@ -1,0 +1,3 @@
+[submodule "Dawnlight/Plugins/UnrealGenAISupport"]
+	path = Dawnlight/Plugins/UnrealGenAISupport
+	url = https://github.com/prajwalshettydev/UnrealGenAISupport.git

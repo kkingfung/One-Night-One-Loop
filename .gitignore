@@ -211,3 +211,5 @@ Plugins/**/Intermediate/
 
 # Add project-specific ignores below this line
 
+# Large VDB effect files (exceed GitHub 2GB limit)
+Dawnlight/Content/Magic_Effects/

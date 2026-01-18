@@ -1,58 +1,66 @@
-# Dawnlight - UE5 Project Documentation
+# Soul Reaper - UE5 Project Documentation
 
 ## Project Overview
 
-**Dawnlight** (One Night, One Loop) is a 2.5D top-down survival/horror game built with Unreal Engine 5.7.
+**Soul Reaper** (One Night, One Loop) is a top-down action roguelite built with Unreal Engine 5.7.
 
-- **Project Name**: Dawnlight
+- **Project Name**: Soul Reaper (Code name: Dawnlight)
 - **Repository**: One-Night-One-Loop
 - **Engine Version**: Unreal Engine 5.7
 - **Primary Language**: C++ with Blueprints (Hybrid Architecture)
-- **Target Demo**: 15-20 minute playable demo
+- **Camera**: Top-Down (固定俯瞰視点)
+- **Target Demo**: 10-15 minute single loop
 
 ### Game Concept
-> 「監視される夜を生き延び、証拠を記録せよ」
+> 「夜に魂を集め、夜明けに力を解き放て」
 
-Night 1のテーマは「監視されている」。プレイヤーは光と影を使い分けながら証拠を撮影し、夜明けまで生き延びる。
+プレイヤーは死神（Stylized Death）として、夜の墓地で動物の魂を収集する。夜明けと共に収集した魂がバフに変換され、襲い来るミニオンの群れと戦う。
+
+### Core Fun
+**「集めれば集めるほど強くなる。そしてその力を解き放つ瞬間。」**
 
 ### Core Design Documents
 - **[GDD.md](Dawnlight/GDD.md)** - Game Design Document（全体設計）
-- **[PROJECT_STRUCTURE.md](Dawnlight/PROJECT_STRUCTURE.md)** - UE5プロジェクト構成
-- **[CODING_STANDARDS.md](Dawnlight/CODING_STANDARDS.md)** - C++コーディング規約
-- **[ART_STYLE_GUIDE.md](Dawnlight/ART_STYLE_GUIDE.md)** - ビジュアルスタイルガイド
-- **[SOUND_DESIGN.md](Dawnlight/SOUND_DESIGN.md)** - サウンドデザインドキュメント
-- **[LEVEL_DESIGN.md](Dawnlight/LEVEL_DESIGN.md)** - レベルデザインドキュメント
-- **[NARRATIVE.md](Dawnlight/NARRATIVE.md)** - ナラティブ・ストーリードキュメント
 
 ---
 
 ## Game Systems Overview
 
-### Player Actions (3 Core)
-| アクション | 説明 |
-|-----------|------|
-| **移動** | 光を避けて移動。光に入ると検知ゲージ上昇 |
-| **撮影** | 証拠を記録。撮影中は無防備 |
-| **隠れる** | 物陰に退避。安全だが時間消費 |
+### Two-Phase Gameplay
+| Phase | 内容 | 時間 |
+|-------|------|------|
+| **Night Phase** | 動物を狩って魂を収集（戦闘チュートリアル） | 2-3分 |
+| **Dawn Phase** | ウェーブ形式の敵と戦闘 | クリアまで |
 
-### Key Subsystems
+### Player Actions
+| 入力 | アクション | 説明 |
+|------|-----------|------|
+| **左クリック** | 通常攻撃 | Attack_A, B（鎌スイング） |
+| **右クリック** | 強攻撃 | Attack_C, D（強力な一撃） |
+| **Q** | 特殊攻撃 | Staff_Attack（長射程） |
+| **WASD** | 移動 | 8方向移動 |
+| **Space** | リーパーモード | ゲージ満タン時のみ |
+
+### Key Subsystems（予定）
 | Subsystem | 役割 |
 |-----------|------|
-| `EventDirectorSubsystem` | イベント選択・管理 |
-| `SurveillanceSubsystem` | 監視レベル・検知管理 |
-| `NightProgressSubsystem` | 夜の進行（時間管理） |
+| `SoulReaperGameMode` | フェーズ管理（Night/Dawn切り替え） |
+| `SoulCollectionSubsystem` | 魂収集、インベントリ管理 |
+| `WaveSpawnerSubsystem` | 敵ウェーブスポーン |
+| `ReaperModeComponent` | リーパーモード管理 |
 
 ### Technology Stack
-- **GAS (Gameplay Ability System)** - アビリティ/エフェクト管理
-- **Enhanced Input** - 入力システム（コンテキスト対応）
-- **Gameplay Tags** - 状態管理、イベントフラグ
-- **Data Assets** - イベント定義、設定データ
-- **UnrealGenAISupport** - MCP連携、AI統合
+- **GAS (Gameplay Ability System)** - アビリティ、バフ/デバフ管理
+- **Enhanced Input** - 入力処理
+- **Gameplay Tags** - 状態管理（Night/Dawn/Reaper等）
+- **Data Assets** - 魂定義、敵定義、アップグレード定義
+- **AI (Behavior Trees)** - 敵AI、動物AI
+- **Niagara** - VFX
+- **UMG** - UI
 
 ### MCP Integration
-- **[MCP_SETUP.md](Dawnlight/MCP_SETUP.md)** - MCPセットアップガイド
 - **Plugin**: UnrealGenAISupport (Git Submodule)
-- **用途**: シーン操作、Blueprint生成、プレイログ分析
+- **用途**: シーン操作、Blueprint生成
 
 ## Architecture Guidelines
 
@@ -500,123 +508,290 @@ git submodule update --remote
 ## Project-Specific Gameplay Tags
 
 ```cpp
-// 状態タグ
-State.Player.Hidden          // プレイヤーが隠れている
-State.Player.Photographing   // 撮影中
-State.Player.Detected        // 検知された
-State.Player.Safe            // 安全状態
+// ゲームフェーズタグ
+Phase.Night                  // 夜フェーズ（魂収集）
+Phase.Dawn                   // 夜明けフェーズ（戦闘）
+Phase.Transition             // フェーズ移行中
 
-// フェーズタグ
-Phase.Night.Introduction     // 導入（低緊張）
-Phase.Night.Relaxation       // 緩和（中緊張）
-Phase.Night.Climax           // 締め（再緊張）
+// プレイヤー状態タグ
+State.Player.Normal          // 通常状態
+State.Player.ReaperMode      // リーパーモード発動中
+State.Player.Attacking       // 攻撃中
+State.Player.Dead            // 死亡状態
+State.Player.Invincible      // 無敵状態（リスポーン後等）
 
-// 監視レベルタグ
-Surveillance.Level.Low       // 監視レベル：低
-Surveillance.Level.Medium    // 監視レベル：中
-Surveillance.Level.High      // 監視レベル：高
-Surveillance.Level.Critical  // 監視レベル：危険
+// 魂タイプタグ
+Soul.Type.Power              // パワー魂（Tiger）
+Soul.Type.Speed              // スピード魂（Horse）
+Soul.Type.Guard              // ガード魂（Dog）
+Soul.Type.Luck               // ラック魂（Chicken）
+Soul.Type.Crit               // クリティカル魂（Deer）
+Soul.Type.Regen              // リジェネ魂（Kitty）
+Soul.Type.Wild               // ワイルド魂（Penguin）- 何でも代用可
+
+// 敵タイプタグ
+Enemy.Type.Melee             // 近接敵
+Enemy.Type.Ranged            // 遠距離敵
+Enemy.Type.Boss              // ボス敵
+
+// ウェーブタグ
+Wave.State.Spawning          // ウェーブスポーン中
+Wave.State.InProgress        // ウェーブ進行中
+Wave.State.Complete          // ウェーブ完了
+Wave.State.Final             // 最終ウェーブ
 ```
 
 ---
 
 ## Project-Specific Patterns
 
-### Event Data Asset Structure
+### Soul Data Asset Structure
 ```cpp
 /**
- * イベントデータアセットの基底クラス
+ * 魂タイプデータアセット
  */
 UCLASS(BlueprintType)
-class UEventDataAsset : public UDataAsset
+class USoulDataAsset : public UDataAsset
 {
     GENERATED_BODY()
 
 public:
-    /** イベント識別子 */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "イベント")
-    FGameplayTag EventTag;
+    /** 魂タイプタグ */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "魂")
+    FGameplayTag SoulTypeTag;
 
-    /** イベント名（日本語） */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "イベント")
-    FText EventName;
+    /** 魂名（日本語） */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "魂")
+    FText SoulName;
 
-    /** イベント名（英語） */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "イベント")
-    FString EventNameEN;
+    /** 対応する動物クラス */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "魂")
+    TSubclassOf<AActor> AnimalClass;
 
-    /** 緊張度レベル (0.0 - 1.0) */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "設定", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-    float TensionLevel = 0.5f;
+    /** バフ効果（GameplayEffect） */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "効果")
+    TSubclassOf<UGameplayEffect> BuffEffect;
 
-    /** 発生するフェーズ */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "設定")
-    FGameplayTag RequiredPhase;
+    /** 基本バフ倍率 */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "効果", meta = (ClampMin = "0.0"))
+    float BaseMultiplier = 0.05f;
+
+    /** 魂アイコン */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+    TObjectPtr<UTexture2D> SoulIcon;
+
+    /** 収集時VFX */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VFX")
+    TObjectPtr<UNiagaraSystem> CollectionVFX;
 };
 ```
 
-### Surveillance Detection Pattern
+### Soul Collection Pattern
 ```cpp
 /**
- * 光源による検知判定
+ * 魂収集処理
  */
-bool USurveillanceSubsystem::IsInLight(const FVector& Location) const
+void USoulCollectionSubsystem::CollectSoul(AActor* Animal, AActor* Collector)
 {
-    // 登録された全ての光源をチェック
-    for (const auto& LightSource : RegisteredLightSources)
+    if (!IsValid(Animal) || !IsValid(Collector))
     {
-        if (!LightSource.IsValid())
-        {
-            continue;
-        }
+        return;
+    }
 
-        // 光の範囲内かチェック
-        const float Distance = FVector::Distance(Location, LightSource->GetActorLocation());
-        const float LightRadius = GetLightRadius(LightSource.Get());
+    // 動物から魂タイプを取得
+    USoulDataAsset* SoulData = GetSoulDataFromAnimal(Animal);
+    if (!SoulData)
+    {
+        UE_LOG(LogSoulReaper, Warning, TEXT("魂データが見つかりません: %s"), *Animal->GetName());
+        return;
+    }
 
-        if (Distance <= LightRadius)
+    // インベントリに追加
+    FSoulInventoryItem& Item = SoulInventory.FindOrAdd(SoulData->SoulTypeTag);
+    Item.Count++;
+
+    // リーパーゲージを増加
+    if (UReaperModeComponent* ReaperComp = Collector->FindComponentByClass<UReaperModeComponent>())
+    {
+        ReaperComp->AddGauge(SoulData->BaseMultiplier * 10.0f);
+    }
+
+    // 収集VFXを再生
+    if (SoulData->CollectionVFX)
+    {
+        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+            GetWorld(),
+            SoulData->CollectionVFX,
+            Animal->GetActorLocation()
+        );
+    }
+
+    // イベント通知
+    OnSoulCollected.Broadcast(SoulData->SoulTypeTag, Item.Count);
+
+    UE_LOG(LogSoulReaper, Log, TEXT("魂を収集: %s (合計: %d)"),
+        *SoulData->SoulName.ToString(), Item.Count);
+}
+```
+
+### Reaper Mode Activation Pattern
+```cpp
+/**
+ * リーパーモード発動処理
+ */
+void UReaperModeComponent::ActivateReaperMode()
+{
+    if (!CanActivate())
+    {
+        return;
+    }
+
+    bIsReaperModeActive = true;
+    CurrentGauge = 0.0f;
+
+    // Roarアニメーションを再生
+    if (UAnimInstance* AnimInstance = GetOwnerAnimInstance())
+    {
+        AnimInstance->Montage_Play(RoarMontage);
+    }
+
+    // リーパーモードタグを付与
+    if (UAbilitySystemComponent* ASC = GetOwnerASC())
+    {
+        ASC->AddLooseGameplayTag(Tag_State_ReaperMode);
+
+        // ダメージ2倍のGameplayEffectを適用
+        FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
+        ASC->ApplyGameplayEffectToSelf(ReaperModeEffect.GetDefaultObject(), 1.0f, Context);
+    }
+
+    // VFX開始
+    if (ReaperModeVFX)
+    {
+        ActiveVFXComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
+            ReaperModeVFX,
+            GetOwner()->GetRootComponent(),
+            NAME_None,
+            FVector::ZeroVector,
+            FRotator::ZeroRotator,
+            EAttachLocation::SnapToTarget,
+            true
+        );
+    }
+
+    // 持続時間タイマー開始
+    GetWorld()->GetTimerManager().SetTimer(
+        ReaperModeTimerHandle,
+        this,
+        &UReaperModeComponent::DeactivateReaperMode,
+        ReaperModeDuration,
+        false
+    );
+
+    OnReaperModeActivated.Broadcast();
+    UE_LOG(LogSoulReaper, Log, TEXT("リーパーモード発動！"));
+}
+```
+
+### Wave Spawner Pattern
+```cpp
+/**
+ * ウェーブスポーン処理
+ */
+void UWaveSpawnerSubsystem::StartWave(int32 WaveIndex)
+{
+    if (!WaveDataTable)
+    {
+        UE_LOG(LogSoulReaper, Error, TEXT("ウェーブデータテーブルが設定されていません"));
+        return;
+    }
+
+    CurrentWaveIndex = WaveIndex;
+
+    // ウェーブデータを取得
+    FWaveData* WaveData = WaveDataTable->FindRow<FWaveData>(
+        FName(*FString::Printf(TEXT("Wave_%d"), WaveIndex)),
+        TEXT("WaveSpawner")
+    );
+
+    if (!WaveData)
+    {
+        UE_LOG(LogSoulReaper, Warning, TEXT("ウェーブデータが見つかりません: %d"), WaveIndex);
+        return;
+    }
+
+    // スポーン状態を設定
+    UGameplayStatics::GetGameInstance(this)->GetSubsystem<UGameplayTagSubsystem>()
+        ->AddTag(Tag_Wave_Spawning);
+
+    // 各敵タイプをスポーン
+    RemainingEnemies = 0;
+    for (const FEnemySpawnInfo& SpawnInfo : WaveData->EnemySpawns)
+    {
+        for (int32 i = 0; i < SpawnInfo.Count; i++)
         {
-            // 遮蔽物チェック
-            if (!IsOccluded(Location, LightSource->GetActorLocation()))
+            // スポーンポイントを取得
+            FVector SpawnLocation = GetRandomSpawnPoint();
+
+            // 敵をスポーン
+            AActor* Enemy = GetWorld()->SpawnActor<AActor>(
+                SpawnInfo.EnemyClass,
+                SpawnLocation,
+                FRotator::ZeroRotator
+            );
+
+            if (Enemy)
             {
-                return true;
+                // 死亡時コールバックを登録
+                if (UHealthComponent* Health = Enemy->FindComponentByClass<UHealthComponent>())
+                {
+                    Health->OnDeath.AddDynamic(this, &UWaveSpawnerSubsystem::OnEnemyDeath);
+                }
+                RemainingEnemies++;
             }
         }
     }
 
-    return false;
+    OnWaveStarted.Broadcast(WaveIndex, RemainingEnemies);
+    UE_LOG(LogSoulReaper, Log, TEXT("ウェーブ %d 開始: 敵 %d 体"), WaveIndex, RemainingEnemies);
 }
 ```
 
-### Photography Ability Pattern
+### Phase Transition Pattern
 ```cpp
 /**
- * 撮影アビリティの実装パターン
+ * フェーズ移行処理（Night → Dawn）
  */
-void UGA_Photograph::ActivateAbility(...)
+void ASoulReaperGameMode::TransitionToDawnPhase()
 {
-    // 撮影開始タグを付与
-    AbilitySystemComponent->AddLooseGameplayTag(Tag_State_Photographing);
+    // 移行中タグを設定
+    SetPhaseTag(Tag_Phase_Transition);
 
-    // カメラビューファインダーUIを表示
-    ShowViewfinderWidget();
-
-    // シャッター音のリスク判定
-    if (ShouldPlayShutterSound())
+    // 魂をバフに変換
+    USoulCollectionSubsystem* SoulSystem = GetWorld()->GetSubsystem<USoulCollectionSubsystem>();
+    if (SoulSystem)
     {
-        // 周囲の敵にサウンドイベントを発行
-        BroadcastSoundEvent(ShutterSoundRadius);
+        SoulSystem->ConvertSoulsToBuffs(GetPlayerPawn());
     }
 
-    // 撮影データを保存
-    RecordPhotographData(GetViewfinderTarget());
+    // UI演出（フェーズ名表示等）
+    if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+    {
+        if (ASoulReaperHUD* HUD = Cast<ASoulReaperHUD>(PC->GetHUD()))
+        {
+            HUD->ShowPhaseTransition(TEXT("DAWN"), DawnPhaseColor);
+        }
+    }
 
-    // タイマーで撮影完了を待機
+    // 移行演出後にDawnフェーズ開始
     GetWorld()->GetTimerManager().SetTimer(
-        PhotographTimerHandle,
-        this,
-        &UGA_Photograph::OnPhotographComplete,
-        PhotographDuration,
+        PhaseTransitionHandle,
+        [this]()
+        {
+            SetPhaseTag(Tag_Phase_Dawn);
+            StartDawnPhase();
+        },
+        PhaseTransitionDuration,
         false
     );
 }

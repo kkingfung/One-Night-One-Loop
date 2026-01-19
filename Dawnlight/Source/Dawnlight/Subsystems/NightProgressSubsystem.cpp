@@ -2,79 +2,33 @@
 
 #include "NightProgressSubsystem.h"
 #include "Dawnlight.h"
-#include "Engine/World.h"
+
+// ========================================================================
+// UWorldSubsystem インターフェース
+// ========================================================================
 
 void UNightProgressSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
-	bNightActive = false;
-	bNightPaused = false;
-	bDawnWarningIssued = false;
+	// 初期値を設定
 	RemainingTime = 0.0f;
-	TotalDuration = 0.0f;
-	CurrentPhase = 0;
+	TotalNightDuration = 180.0f;  // デフォルト3分
+	TensionLevel = 0.0f;
+	bDawnWarningIssued = false;
 
-	// デフォルトのフェーズ閾値
-	PhaseThresholds.Add(0.33f); // 33%で緩和フェーズへ
-	PhaseThresholds.Add(0.66f); // 66%でクライマックスへ
-
-	// 夜明け警告：残り10%
-	DawnWarningThreshold = 0.1f;
-
-	UE_LOG(LogDawnlight, Log, TEXT("NightProgressSubsystem: 初期化しました"));
+	UE_LOG(LogDawnlight, Log, TEXT("[NightProgressSubsystem] 初期化完了"));
 }
 
 void UNightProgressSubsystem::Deinitialize()
 {
-	bNightActive = false;
-
-	UE_LOG(LogDawnlight, Log, TEXT("NightProgressSubsystem: 終了しました"));
-
+	UE_LOG(LogDawnlight, Log, TEXT("[NightProgressSubsystem] 終了処理"));
 	Super::Deinitialize();
-}
-
-void UNightProgressSubsystem::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-
-	if (!bNightActive || bNightPaused)
-	{
-		return;
-	}
-
-	// 時間を減らす
-	RemainingTime -= DeltaTime;
-
-	// フェーズ進行をチェック
-	CheckPhaseProgression();
-
-	// 夜明け警告
-	if (!bDawnWarningIssued && IsDawnApproaching())
-	{
-		bDawnWarningIssued = true;
-		UE_LOG(LogDawnlight, Log, TEXT("NightProgressSubsystem: 夜明けが近づいています"));
-		OnDawnApproaching.Broadcast();
-	}
-
-	// 夜明け（時間切れ）
-	if (RemainingTime <= 0.0f)
-	{
-		RemainingTime = 0.0f;
-		bNightActive = false;
-
-		UE_LOG(LogDawnlight, Log, TEXT("NightProgressSubsystem: 夜明けをトリガーしました"));
-		OnDawnTriggered.Broadcast();
-	}
-}
-
-TStatId UNightProgressSubsystem::GetStatId() const
-{
-	RETURN_QUICK_DECLARE_CYCLE_STAT(UNightProgressSubsystem, STATGROUP_Tickables);
 }
 
 bool UNightProgressSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
+	// ゲームワールドでのみ作成
 	if (const UWorld* World = Cast<UWorld>(Outer))
 	{
 		return World->IsGameWorld();
@@ -82,98 +36,68 @@ bool UNightProgressSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 	return false;
 }
 
-void UNightProgressSubsystem::StartNight(float Duration)
+// ========================================================================
+// 時間情報
+// ========================================================================
+
+void UNightProgressSubsystem::SetRemainingTime(float Time)
 {
-	if (Duration <= 0.0f)
+	// 初回設定時に総時間を記録
+	if (TotalNightDuration <= 0.0f || Time > TotalNightDuration)
 	{
-		UE_LOG(LogDawnlight, Warning, TEXT("NightProgressSubsystem: 無効な時間が指定されました: %.1f"), Duration);
-		return;
+		TotalNightDuration = Time;
 	}
 
-	TotalDuration = Duration;
-	RemainingTime = Duration;
-	bNightActive = true;
-	bNightPaused = false;
-	bDawnWarningIssued = false;
-	CurrentPhase = 0;
+	RemainingTime = FMath::Max(0.0f, Time);
 
-	UE_LOG(LogDawnlight, Log, TEXT("NightProgressSubsystem: 夜を開始しました (時間: %.1f秒)"), Duration);
-
-	OnNightStarted.Broadcast();
-}
-
-void UNightProgressSubsystem::StopNight()
-{
-	bNightActive = false;
-	bNightPaused = false;
-
-	UE_LOG(LogDawnlight, Log, TEXT("NightProgressSubsystem: 夜を停止しました"));
-}
-
-void UNightProgressSubsystem::PauseNight()
-{
-	if (bNightActive && !bNightPaused)
+	// 夜明け警告のチェック（残り30秒以下）
+	if (!bDawnWarningIssued && IsDawnApproaching())
 	{
-		bNightPaused = true;
-		UE_LOG(LogDawnlight, Log, TEXT("NightProgressSubsystem: 夜を一時停止しました"));
-	}
-}
-
-void UNightProgressSubsystem::ResumeNight()
-{
-	if (bNightActive && bNightPaused)
-	{
-		bNightPaused = false;
-		UE_LOG(LogDawnlight, Log, TEXT("NightProgressSubsystem: 夜を再開しました"));
+		bDawnWarningIssued = true;
+		OnDawnApproaching.Broadcast();
+		UE_LOG(LogDawnlight, Log, TEXT("[NightProgressSubsystem] 夜明けが近づいています！残り: %.1f秒"), RemainingTime);
 	}
 }
 
 float UNightProgressSubsystem::GetNightProgress() const
 {
-	if (TotalDuration <= 0.0f)
+	if (TotalNightDuration <= 0.0f)
 	{
 		return 0.0f;
 	}
 
-	return 1.0f - (RemainingTime / TotalDuration);
-}
-
-FString UNightProgressSubsystem::GetFormattedRemainingTime() const
-{
-	const int32 Minutes = FMath::FloorToInt(RemainingTime / 60.0f);
-	const int32 Seconds = FMath::FloorToInt(FMath::Fmod(RemainingTime, 60.0f));
-
-	return FString::Printf(TEXT("%02d:%02d"), Minutes, Seconds);
+	// 経過した時間の割合（0 = 開始、1 = 終了）
+	return 1.0f - (RemainingTime / TotalNightDuration);
 }
 
 bool UNightProgressSubsystem::IsDawnApproaching() const
 {
-	if (TotalDuration <= 0.0f)
-	{
-		return false;
-	}
-
-	const float RemainingRatio = RemainingTime / TotalDuration;
-	return RemainingRatio <= DawnWarningThreshold;
+	// 残り30秒以下で夜明けが近い
+	return RemainingTime <= 30.0f && RemainingTime > 0.0f;
 }
 
-void UNightProgressSubsystem::CheckPhaseProgression()
+// ========================================================================
+// 緊張度
+// ========================================================================
+
+void UNightProgressSubsystem::SetTensionLevel(float Level)
 {
-	const float Progress = GetNightProgress();
+	const float OldLevel = TensionLevel;
+	TensionLevel = FMath::Clamp(Level, 0.0f, 1.0f);
 
-	// フェーズ閾値をチェック
-	for (int32 i = 0; i < PhaseThresholds.Num(); ++i)
+	// 閾値チェック（0.5と0.8で通知）
+	const TArray<float> Thresholds = { 0.5f, 0.8f };
+	for (float Threshold : Thresholds)
 	{
-		// 現在のフェーズよりも先の閾値を超えた場合
-		if (i >= CurrentPhase && Progress >= PhaseThresholds[i])
+		if (OldLevel < Threshold && TensionLevel >= Threshold)
 		{
-			const int32 OldPhase = CurrentPhase;
-			CurrentPhase = i + 1;
-
-			UE_LOG(LogDawnlight, Log, TEXT("NightProgressSubsystem: フェーズが変更されました %d → %d (進行度: %.1f%%)"),
-				OldPhase, CurrentPhase, Progress * 100.0f);
-
-			OnPhaseChanged.Broadcast(OldPhase, CurrentPhase);
+			OnTensionThresholdReached.Broadcast(TensionLevel);
+			UE_LOG(LogDawnlight, Log, TEXT("[NightProgressSubsystem] 緊張度が閾値を超えました: %.2f"), TensionLevel);
 		}
 	}
+}
+
+void UNightProgressSubsystem::AddTension(float Amount)
+{
+	SetTensionLevel(TensionLevel + Amount);
 }

@@ -338,6 +338,26 @@ bool ADawnlightCharacter::CanActivateReaperMode() const
 	return !bIsDead && !bIsInReaperMode && ReaperGauge >= 100.0f;
 }
 
+void ADawnlightCharacter::AddReaperGauge(float Amount)
+{
+	// リーパーモード中はゲージを増やさない
+	if (bIsInReaperMode || bIsDead)
+	{
+		return;
+	}
+
+	const float OldGauge = ReaperGauge;
+	ReaperGauge = FMath::Clamp(ReaperGauge + Amount, 0.0f, 100.0f);
+
+	UE_LOG(LogDawnlight, Verbose, TEXT("SoulReaper: リーパーゲージ追加: %.1f → %.1f / 100"), OldGauge, ReaperGauge);
+
+	// ゲージが満タンになったらログ出力
+	if (OldGauge < 100.0f && ReaperGauge >= 100.0f)
+	{
+		UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: リーパーゲージ満タン！スペースキーで発動可能"));
+	}
+}
+
 // ============================================================================
 // ダメージ
 // ============================================================================

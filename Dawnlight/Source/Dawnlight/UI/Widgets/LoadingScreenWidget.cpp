@@ -204,16 +204,16 @@ void ULoadingScreenWidget::UpdateFade(float DeltaTime)
 
 void ULoadingScreenWidget::SetupDefaultHints()
 {
-	// デフォルトのローディングヒント（Dawnlightテーマ）
+	// デフォルトのローディングヒント（Soul Reaperテーマ）
 	if (LoadingHints.Num() == 0)
 	{
-		LoadingHints.Add(FText::FromString(TEXT("光を避けて移動することで検知を防げます")));
-		LoadingHints.Add(FText::FromString(TEXT("物陰に隠れると安全ですが、時間を消費します")));
-		LoadingHints.Add(FText::FromString(TEXT("シャッター音は周囲に響きます。撮影のタイミングに注意")));
-		LoadingHints.Add(FText::FromString(TEXT("監視レベルが上がるとイベントの難易度も上昇します")));
-		LoadingHints.Add(FText::FromString(TEXT("夜明けまで生き延びることが最優先です")));
-		LoadingHints.Add(FText::FromString(TEXT("証拠を記録することで真実に近づけます")));
-		LoadingHints.Add(FText::FromString(TEXT("監視されている...常に何かがあなたを見ています")));
-		LoadingHints.Add(FText::FromString(TEXT("光と影の境界線を見極めてください")));
+		LoadingHints.Add(FText::FromString(TEXT("夜の間に動物を狩り、魂を収集せよ")));
+		LoadingHints.Add(FText::FromString(TEXT("収集した魂は夜明けに強力なバフに変換される")));
+		LoadingHints.Add(FText::FromString(TEXT("リーパーゲージが満タンになったらSpaceでリーパーモード発動")));
+		LoadingHints.Add(FText::FromString(TEXT("リーパーモード中はダメージが2倍になる")));
+		LoadingHints.Add(FText::FromString(TEXT("Tigerの魂は攻撃力、Horseの魂は移動速度をアップ")));
+		LoadingHints.Add(FText::FromString(TEXT("Dawnフェーズでは敵のウェーブを全滅させろ")));
+		LoadingHints.Add(FText::FromString(TEXT("多くの魂を集めるほど、夜明けの戦いが有利になる")));
+		LoadingHints.Add(FText::FromString(TEXT("夜に魂を集め、夜明けに力を解き放て")));
 	}
 }

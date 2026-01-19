@@ -4,22 +4,35 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
+#include "GameplayTagContainer.h"
 #include "DawnlightGameMode.generated.h"
 
-class UEventDirectorSubsystem;
 class UNightProgressSubsystem;
-class USurveillanceSubsystem;
+class USoulCollectionSubsystem;
 class UGameplayHUDWidget;
-class UNightCompleteWidget;
+class UGameResultWidget;
+class ADawnlightCharacter;
+class UDawnlightAttributeSet;
 
 /**
- * Dawnlight ゲームモード
+ * ゲームフェーズ
+ */
+UENUM(BlueprintType)
+enum class EGamePhase : uint8
+{
+	None            UMETA(DisplayName = "なし"),
+	Night           UMETA(DisplayName = "Night Phase"),     // 魂狩猟フェーズ
+	DawnTransition  UMETA(DisplayName = "Dawn Transition"), // 夜明け移行演出
+	Dawn            UMETA(DisplayName = "Dawn Phase"),      // 戦闘フェーズ
+	LoopEnd         UMETA(DisplayName = "Loop End")         // ループ終了
+};
+
+/**
+ * Soul Reaper ゲームモード
  *
- * Night 1のゲームフローを管理するゲームモード
- * - 夜の開始/終了処理
- * - フェーズ進行管理
- * - HUD管理
- * - 夜明け演出
+ * 2フェーズ構成のゲームフローを管理
+ * - Night Phase: 動物を狩って魂を収集（3分）
+ * - Dawn Phase: 敵と戦闘（Wave制）
  */
 UCLASS()
 class DAWNLIGHT_API ADawnlightGameMode : public AGameModeBase
@@ -33,25 +46,110 @@ public:
 	// ゲームフロー
 	// ========================================================================
 
-	/** 夜を開始する */
+	/** ゲームを開始（Night Phaseから） */
 	UFUNCTION(BlueprintCallable, Category = "ゲームフロー")
-	void StartNight();
+	void StartGame();
 
-	/** 夜明けによる強制終了 */
+	/** Night Phaseを開始 */
 	UFUNCTION(BlueprintCallable, Category = "ゲームフロー")
-	void TriggerDawn();
+	void StartNightPhase();
 
-	/** 夜が進行中かどうか */
+	/** Dawn Phaseを開始（Night Phase終了後自動的に呼ばれる） */
+	UFUNCTION(BlueprintCallable, Category = "ゲームフロー")
+	void StartDawnPhase();
+
+	/** 現在のフェーズを取得 */
 	UFUNCTION(BlueprintPure, Category = "ゲームフロー")
-	bool IsNightActive() const { return bNightActive; }
+	EGamePhase GetCurrentPhase() const { return CurrentPhase; }
 
-	/** ゲームをリスタート */
+	/** Night Phase中かどうか */
+	UFUNCTION(BlueprintPure, Category = "ゲームフロー")
+	bool IsInNightPhase() const { return CurrentPhase == EGamePhase::Night; }
+
+	/** Dawn Phase中かどうか */
+	UFUNCTION(BlueprintPure, Category = "ゲームフロー")
+	bool IsInDawnPhase() const { return CurrentPhase == EGamePhase::Dawn; }
+
+	/** Night Phase残り時間を取得 */
+	UFUNCTION(BlueprintPure, Category = "ゲームフロー")
+	float GetNightPhaseTimeRemaining() const { return NightPhaseTimeRemaining; }
+
+	/** Night Phase時間を設定 */
 	UFUNCTION(BlueprintCallable, Category = "ゲームフロー")
-	void RestartNight();
+	void SetNightPhaseDuration(float Duration) { NightPhaseDuration = Duration; }
+
+	// ========================================================================
+	// Wave管理
+	// ========================================================================
+
+	/** 次のWaveを開始 */
+	UFUNCTION(BlueprintCallable, Category = "Wave")
+	void StartNextWave();
+
+	/** 現在のWave番号を取得（1から開始） */
+	UFUNCTION(BlueprintPure, Category = "Wave")
+	int32 GetCurrentWave() const { return CurrentWave; }
+
+	/** 総Wave数を取得 */
+	UFUNCTION(BlueprintPure, Category = "Wave")
+	int32 GetTotalWaves() const { return TotalWaves; }
+
+	/** 残り敵数を取得 */
+	UFUNCTION(BlueprintPure, Category = "Wave")
+	int32 GetRemainingEnemies() const { return RemainingEnemies; }
+
+	/** 敵を倒した時に呼び出す */
+	UFUNCTION(BlueprintCallable, Category = "Wave")
+	void OnEnemyKilled();
+
+	// ========================================================================
+	// ゲーム終了
+	// ========================================================================
+
+	/** プレイヤー死亡時 */
+	UFUNCTION(BlueprintCallable, Category = "ゲームフロー")
+	void OnPlayerDeath();
+
+	/** ゲームクリア時（全Wave突破） */
+	UFUNCTION(BlueprintCallable, Category = "ゲームフロー")
+	void OnGameCleared();
+
+	/** リスタート */
+	UFUNCTION(BlueprintCallable, Category = "ゲームフロー")
+	void RestartGame();
 
 	/** メインメニューに戻る */
 	UFUNCTION(BlueprintCallable, Category = "ゲームフロー")
 	void ReturnToMainMenu();
+
+	// ========================================================================
+	// デリゲート
+	// ========================================================================
+
+	/** フェーズ変更時 */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnPhaseChanged, EGamePhase, OldPhase, EGamePhase, NewPhase);
+	UPROPERTY(BlueprintAssignable, Category = "イベント")
+	FOnPhaseChanged OnPhaseChanged;
+
+	/** Wave開始時 */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWaveStarted, int32, WaveNumber);
+	UPROPERTY(BlueprintAssignable, Category = "イベント")
+	FOnWaveStarted OnWaveStarted;
+
+	/** Wave完了時 */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWaveCompleted, int32, WaveNumber);
+	UPROPERTY(BlueprintAssignable, Category = "イベント")
+	FOnWaveCompleted OnWaveCompleted;
+
+	/** ゲームオーバー時 */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnGameOver);
+	UPROPERTY(BlueprintAssignable, Category = "イベント")
+	FOnGameOver OnGameOver;
+
+	/** ゲームクリア時 */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnGameClear);
+	UPROPERTY(BlueprintAssignable, Category = "イベント")
+	FOnGameClear OnGameClear;
 
 protected:
 	virtual void BeginPlay() override;
@@ -61,21 +159,29 @@ protected:
 	// イベント（BP実装可能）
 	// ========================================================================
 
-	/** 夜開始時に呼ばれる */
+	/** Night Phase開始時に呼ばれる */
 	UFUNCTION(BlueprintImplementableEvent, Category = "イベント")
-	void OnNightStarted();
+	void BP_OnNightPhaseStarted();
 
-	/** 夜明け時に呼ばれる */
+	/** Dawn Phase開始時に呼ばれる */
 	UFUNCTION(BlueprintImplementableEvent, Category = "イベント")
-	void OnDawnTriggered();
+	void BP_OnDawnPhaseStarted();
 
-	/** フェーズ変更時に呼ばれる */
+	/** Wave開始時にBPで呼ばれる（敵スポーンなど） */
 	UFUNCTION(BlueprintImplementableEvent, Category = "イベント")
-	void OnPhaseChanged(int32 OldPhase, int32 NewPhase);
+	void BP_OnWaveStarted(int32 WaveNumber, int32 EnemyCount);
 
-	/** 夜明け演出完了時に呼ばれる */
+	/** Wave完了時にBPで呼ばれる */
 	UFUNCTION(BlueprintImplementableEvent, Category = "イベント")
-	void OnNightCompleteSequenceFinished();
+	void BP_OnWaveCompleted(int32 WaveNumber);
+
+	/** ゲームオーバー時にBPで呼ばれる */
+	UFUNCTION(BlueprintImplementableEvent, Category = "イベント")
+	void BP_OnGameOver();
+
+	/** ゲームクリア時にBPで呼ばれる */
+	UFUNCTION(BlueprintImplementableEvent, Category = "イベント")
+	void BP_OnGameClear();
 
 	// ========================================================================
 	// UI
@@ -89,89 +195,114 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void HideGameplayHUD();
 
-	/** Night Complete演出を表示 */
+	/** 結果画面を表示 */
 	UFUNCTION(BlueprintCallable, Category = "UI")
-	void ShowNightCompleteScreen();
-
-	// ========================================================================
-	// ウィジェットクラス設定
-	// ========================================================================
-
-	/** ゲームプレイHUDウィジェットクラス */
-	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TSubclassOf<UGameplayHUDWidget> GameplayHUDWidgetClass;
-
-	/** Night Complete画面ウィジェットクラス */
-	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TSubclassOf<UUserWidget> NightCompleteWidgetClass;
-
-private:
-	// ========================================================================
-	// サブシステムイベントハンドラ
-	// ========================================================================
-
-	/** NightProgressSubsystemの夜明けイベントハンドラ */
-	UFUNCTION()
-	void HandleDawnTriggered();
-
-	/** NightProgressSubsystemのフェーズ変更イベントハンドラ */
-	UFUNCTION()
-	void HandlePhaseChanged(int32 OldPhase, int32 NewPhase);
-
-	// ========================================================================
-	// 内部処理
-	// ========================================================================
-
-	/** サブシステムを初期化 */
-	void InitializeSubsystems();
-
-	/** サブシステムイベントをバインド */
-	void BindSubsystemEvents();
-
-	/** サブシステムイベントをアンバインド */
-	void UnbindSubsystemEvents();
-
-	/** 夜明け演出を開始 */
-	void StartDawnSequence();
-
-	/** 夜明け演出のタイマー完了 */
-	void OnDawnSequenceComplete();
-
-	// ========================================================================
-	// 状態
-	// ========================================================================
-
-	/** 夜が進行中かどうか */
-	UPROPERTY(VisibleInstanceOnly, Category = "状態")
-	bool bNightActive;
-
-	/** 現在のフェーズ（0=導入, 1=緩和, 2=クライマックス） */
-	UPROPERTY(VisibleInstanceOnly, Category = "状態")
-	int32 CurrentPhase;
-
-	/** 夜明け演出中かどうか */
-	UPROPERTY(VisibleInstanceOnly, Category = "状態")
-	bool bDawnSequenceActive;
+	void ShowResultScreen(bool bVictory);
 
 	// ========================================================================
 	// 設定
 	// ========================================================================
 
-	/** 夜の総時間（秒） */
-	UPROPERTY(EditDefaultsOnly, Category = "設定")
-	float NightDuration;
+	/** Night Phaseの時間（秒）- デフォルト3分 */
+	UPROPERTY(EditDefaultsOnly, Category = "設定|Night Phase")
+	float NightPhaseDuration;
 
-	/** 夜明け演出の時間（秒） */
-	UPROPERTY(EditDefaultsOnly, Category = "設定")
-	float DawnSequenceDuration;
+	/** Night Phase中に動物をスポーンするか */
+	UPROPERTY(EditDefaultsOnly, Category = "設定|Night Phase")
+	bool bSpawnAnimals;
 
-	/** ゲーム開始時に自動で夜を開始するか */
+	/** 動物スポーン間隔（秒） */
+	UPROPERTY(EditDefaultsOnly, Category = "設定|Night Phase", meta = (EditCondition = "bSpawnAnimals"))
+	float AnimalSpawnInterval;
+
+	/** 最大動物数 */
+	UPROPERTY(EditDefaultsOnly, Category = "設定|Night Phase", meta = (EditCondition = "bSpawnAnimals"))
+	int32 MaxAnimalCount;
+
+	/** 総Wave数 */
+	UPROPERTY(EditDefaultsOnly, Category = "設定|Dawn Phase")
+	int32 TotalWaves;
+
+	/** 各Waveの敵数 */
+	UPROPERTY(EditDefaultsOnly, Category = "設定|Dawn Phase")
+	TArray<int32> EnemiesPerWave;
+
+	/** Wave間のインターバル（秒） */
+	UPROPERTY(EditDefaultsOnly, Category = "設定|Dawn Phase")
+	float WaveInterval;
+
+	/** Dawn Transition演出時間（秒） */
+	UPROPERTY(EditDefaultsOnly, Category = "設定|Dawn Phase")
+	float DawnTransitionDuration;
+
+	/** ゲーム開始時に自動でNight Phaseを開始するか */
 	UPROPERTY(EditDefaultsOnly, Category = "設定")
-	bool bAutoStartNight;
+	bool bAutoStart;
 
 	/** 自動開始までの遅延（秒） */
 	UPROPERTY(EditDefaultsOnly, Category = "設定")
 	float AutoStartDelay;
+
+	/** ゲームプレイHUDウィジェットクラス */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UGameplayHUDWidget> GameplayHUDWidgetClass;
+
+	/** 結果画面ウィジェットクラス */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UGameResultWidget> ResultWidgetClass;
+
+private:
+	// ========================================================================
+	// 内部処理
+	// ========================================================================
+
+	/** フェーズを設定 */
+	void SetPhase(EGamePhase NewPhase);
+
+	/** Night Phase終了処理 */
+	void EndNightPhase();
+
+	/** Dawn Transition演出 */
+	void StartDawnTransition();
+
+	/** Dawn Transition完了 */
+	void OnDawnTransitionComplete();
+
+	/** Wave完了チェック */
+	void CheckWaveCompletion();
+
+	/** サブシステムを初期化 */
+	void InitializeSubsystems();
+
+	/** 動物スポーン処理 */
+	void SpawnAnimal();
+
+	/** 収集した魂のバフを適用 */
+	void ApplyCollectedSoulBuffs();
+
+	// ========================================================================
+	// 状態
+	// ========================================================================
+
+	/** 現在のフェーズ */
+	UPROPERTY(VisibleInstanceOnly, Category = "状態")
+	EGamePhase CurrentPhase;
+
+	/** 現在のWave番号（1から開始） */
+	UPROPERTY(VisibleInstanceOnly, Category = "状態")
+	int32 CurrentWave;
+
+	/** 残り敵数 */
+	UPROPERTY(VisibleInstanceOnly, Category = "状態")
+	int32 RemainingEnemies;
+
+	/** Night Phase残り時間 */
+	UPROPERTY(VisibleInstanceOnly, Category = "状態")
+	float NightPhaseTimeRemaining;
+
+	/** 現在の動物数 */
+	UPROPERTY(VisibleInstanceOnly, Category = "状態")
+	int32 CurrentAnimalCount;
 
 	// ========================================================================
 	// サブシステム参照
@@ -181,7 +312,7 @@ private:
 	TWeakObjectPtr<UNightProgressSubsystem> NightProgressSubsystem;
 
 	UPROPERTY()
-	TWeakObjectPtr<USurveillanceSubsystem> SurveillanceSubsystem;
+	TWeakObjectPtr<USoulCollectionSubsystem> SoulCollectionSubsystem;
 
 	// ========================================================================
 	// ウィジェット参照
@@ -191,12 +322,15 @@ private:
 	TObjectPtr<UGameplayHUDWidget> GameplayHUDWidget;
 
 	UPROPERTY()
-	TObjectPtr<UUserWidget> NightCompleteWidget;
+	TObjectPtr<UGameResultWidget> ResultWidget;
 
 	// ========================================================================
 	// タイマー
 	// ========================================================================
 
 	FTimerHandle AutoStartTimerHandle;
-	FTimerHandle DawnSequenceTimerHandle;
+	FTimerHandle NightPhaseTimerHandle;
+	FTimerHandle DawnTransitionTimerHandle;
+	FTimerHandle WaveIntervalTimerHandle;
+	FTimerHandle AnimalSpawnTimerHandle;
 };

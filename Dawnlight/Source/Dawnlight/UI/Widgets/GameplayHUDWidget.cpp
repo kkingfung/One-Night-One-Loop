@@ -5,154 +5,330 @@
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
-#include "Subsystems/NightProgressSubsystem.h"
-#include "Subsystems/SurveillanceSubsystem.h"
-#include "Components/PhotographyComponent.h"
-#include "Components/SurveillanceDetectorComponent.h"
-#include "Kismet/GameplayStatics.h"
+#include "UI/ViewModels/GameplayHUDViewModel.h"
 
 void UGameplayHUDWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	// デフォルト色を設定
-	DetectionGaugeNormalColor = FLinearColor(0.2f, 0.6f, 0.2f, 1.0f);  // 緑
-	DetectionGaugeWarningColor = FLinearColor(0.8f, 0.6f, 0.1f, 1.0f); // オレンジ
-	DetectionGaugeDangerColor = FLinearColor(0.8f, 0.1f, 0.1f, 1.0f);  // 赤
-
-	// サブシステムをキャッシュ
-	CacheSubsystems();
+	// Soul Reaperテーマの色を設定
+	ReaperGaugeNormalColor = FLinearColor(0.4f, 0.2f, 0.6f, 1.0f);  // 紫
+	ReaperGaugeHighColor = FLinearColor(0.9f, 0.5f, 0.1f, 1.0f);    // オレンジ
+	ReaperGaugeMaxColor = FLinearColor(1.0f, 0.85f, 0.0f, 1.0f);    // 金
 
 	// 初期状態を設定
-	if (DetectionWarningPanel)
+	if (ReaperReadyWarningPanel)
 	{
-		DetectionWarningPanel->SetVisibility(ESlateVisibility::Collapsed);
+		ReaperReadyWarningPanel->SetVisibility(ESlateVisibility::Collapsed);
 	}
 	if (DawnWarningPanel)
 	{
 		DawnWarningPanel->SetVisibility(ESlateVisibility::Collapsed);
 	}
-	if (PhotographingIndicator)
+	if (ReaperModeIndicator)
 	{
-		PhotographingIndicator->SetVisibility(ESlateVisibility::Collapsed);
+		ReaperModeIndicator->SetVisibility(ESlateVisibility::Collapsed);
 	}
-	if (HiddenIndicator)
+	if (BuffIndicator)
 	{
-		HiddenIndicator->SetVisibility(ESlateVisibility::Collapsed);
+		BuffIndicator->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
-	UE_LOG(LogDawnlight, Log, TEXT("[GameplayHUDWidget] 初期化完了"));
+	// フェーズパネル初期状態
+	if (NightPhasePanel)
+	{
+		NightPhasePanel->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	if (DawnPhasePanel)
+	{
+		DawnPhasePanel->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	UE_LOG(LogDawnlight, Log, TEXT("[GameplayHUDWidget] Soul Reaper HUD初期化完了"));
+}
+
+void UGameplayHUDWidget::NativeDestruct()
+{
+	// ViewModelからアンバインド
+	UnbindFromViewModel();
+
+	// タイマーをクリア
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(WaveAnnouncementTimerHandle);
+	}
+
+	Super::NativeDestruct();
 }
 
 void UGameplayHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
-	// 夜進行サブシステムから残り時間を更新
-	if (NightProgressSubsystem.IsValid() && NightProgressSubsystem->IsNightActive())
+	// ViewModelがある場合は、時間系のみ毎フレーム同期
+	// （他のプロパティはイベント駆動で更新）
+	if (ViewModel && ViewModel->IsInitialized())
 	{
-		UpdateRemainingTime(NightProgressSubsystem->GetRemainingTime());
-		UpdatePhaseDisplay(NightProgressSubsystem->GetCurrentPhase());
+		// Night Phase中は残り時間を更新（毎フレーム必要）
+		if (ViewModel->CurrentPhase == EGamePhase::Night)
+		{
+			UpdateRemainingTime(ViewModel->NightTimeRemaining);
 
-		// 夜明け警告
-		if (NightProgressSubsystem->IsDawnApproaching())
+			// 動物数も更新
+			UpdateAnimalCount(ViewModel->AliveAnimalCount, ViewModel->TotalAnimalCount);
+		}
+
+		// Dawn Phase中はWave情報を更新
+		if (ViewModel->CurrentPhase == EGamePhase::Dawn)
+		{
+			UpdateWaveInfo(
+				ViewModel->CurrentWaveNumber,
+				ViewModel->TotalWaveCount,
+				ViewModel->RemainingEnemies
+			);
+		}
+	}
+}
+
+void UGameplayHUDWidget::SetViewModel(UGameplayHUDViewModel* InViewModel)
+{
+	// 既存のViewModelからアンバインド
+	UnbindFromViewModel();
+
+	ViewModel = InViewModel;
+
+	// 新しいViewModelにバインド
+	if (ViewModel)
+	{
+		BindToViewModel();
+		RefreshFromViewModel();
+	}
+
+	UE_LOG(LogDawnlight, Log, TEXT("[GameplayHUDWidget] ViewModel設定: %s"),
+		ViewModel ? *ViewModel->GetName() : TEXT("null"));
+}
+
+void UGameplayHUDWidget::BindToViewModel()
+{
+	if (!ViewModel)
+	{
+		return;
+	}
+
+	// プロパティ変更イベントにバインド
+	ViewModel->OnViewModelPropertyChanged.AddDynamic(this, &UGameplayHUDWidget::HandlePropertyChanged);
+	ViewModel->OnAllPropertiesChanged.AddDynamic(this, &UGameplayHUDWidget::HandleAllPropertiesChanged);
+
+	// 特定イベントにバインド
+	ViewModel->OnWaveStartedEvent.AddDynamic(this, &UGameplayHUDWidget::HandleWaveStarted);
+	ViewModel->OnReaperModeChanged.AddDynamic(this, &UGameplayHUDWidget::HandleReaperModeChanged);
+
+	UE_LOG(LogDawnlight, Verbose, TEXT("[GameplayHUDWidget] ViewModelにバインド完了"));
+}
+
+void UGameplayHUDWidget::UnbindFromViewModel()
+{
+	if (!ViewModel)
+	{
+		return;
+	}
+
+	// プロパティ変更イベントからアンバインド
+	ViewModel->OnViewModelPropertyChanged.RemoveDynamic(this, &UGameplayHUDWidget::HandlePropertyChanged);
+	ViewModel->OnAllPropertiesChanged.RemoveDynamic(this, &UGameplayHUDWidget::HandleAllPropertiesChanged);
+
+	// 特定イベントからアンバインド
+	ViewModel->OnWaveStartedEvent.RemoveDynamic(this, &UGameplayHUDWidget::HandleWaveStarted);
+	ViewModel->OnReaperModeChanged.RemoveDynamic(this, &UGameplayHUDWidget::HandleReaperModeChanged);
+
+	UE_LOG(LogDawnlight, Verbose, TEXT("[GameplayHUDWidget] ViewModelからアンバインド完了"));
+}
+
+void UGameplayHUDWidget::RefreshFromViewModel()
+{
+	if (!ViewModel)
+	{
+		return;
+	}
+
+	// 全プロパティをUIに反映
+	UpdatePhaseDisplay(ViewModel->CurrentPhase);
+	UpdatePhasePanels(ViewModel->CurrentPhase);
+	UpdateRemainingTime(ViewModel->NightTimeRemaining);
+	UpdateSoulCount(ViewModel->TotalSoulCount);
+	UpdateReaperGauge(ViewModel->ReaperGaugePercent);
+	UpdateAnimalCount(ViewModel->AliveAnimalCount, ViewModel->TotalAnimalCount);
+	UpdateWaveInfo(ViewModel->CurrentWaveNumber, ViewModel->TotalWaveCount, ViewModel->RemainingEnemies);
+	UpdatePlayerHealth(ViewModel->PlayerCurrentHP, ViewModel->PlayerMaxHP);
+
+	// 警告状態
+	if (ViewModel->bIsReaperModeReady)
+	{
+		ShowReaperReadyWarning();
+	}
+	else
+	{
+		HideReaperReadyWarning();
+	}
+
+	if (ViewModel->bShouldShowDawnWarning)
+	{
+		ShowDawnWarning();
+	}
+
+	// リーパーモード
+	ShowReaperModeIndicator(ViewModel->bIsReaperModeActive);
+
+	// バフ
+	if (ViewModel->DamageBuffPercent > 0.0f)
+	{
+		ShowDamageBuffIndicator(ViewModel->DamageBuffPercent);
+	}
+
+	UE_LOG(LogDawnlight, Verbose, TEXT("[GameplayHUDWidget] ViewModelから全UI更新完了"));
+}
+
+void UGameplayHUDWidget::HandlePropertyChanged(FName PropertyName)
+{
+	if (!ViewModel)
+	{
+		return;
+	}
+
+	// プロパティ名に応じてUIを更新
+	if (PropertyName == UGameplayHUDViewModel::PROP_CurrentPhase ||
+		PropertyName == UGameplayHUDViewModel::PROP_PhaseName)
+	{
+		UpdatePhaseDisplay(ViewModel->CurrentPhase);
+		UpdatePhasePanels(ViewModel->CurrentPhase);
+	}
+	else if (PropertyName == UGameplayHUDViewModel::PROP_NightTimeRemaining ||
+			 PropertyName == UGameplayHUDViewModel::PROP_FormattedTimeRemaining)
+	{
+		UpdateRemainingTime(ViewModel->NightTimeRemaining);
+	}
+	else if (PropertyName == UGameplayHUDViewModel::PROP_TotalSoulCount)
+	{
+		UpdateSoulCount(ViewModel->TotalSoulCount);
+	}
+	else if (PropertyName == UGameplayHUDViewModel::PROP_ReaperGaugePercent)
+	{
+		UpdateReaperGauge(ViewModel->ReaperGaugePercent);
+	}
+	else if (PropertyName == UGameplayHUDViewModel::PROP_IsReaperModeReady)
+	{
+		if (ViewModel->bIsReaperModeReady)
+		{
+			ShowReaperReadyWarning();
+		}
+		else
+		{
+			HideReaperReadyWarning();
+		}
+	}
+	else if (PropertyName == UGameplayHUDViewModel::PROP_IsReaperModeActive)
+	{
+		ShowReaperModeIndicator(ViewModel->bIsReaperModeActive);
+	}
+	else if (PropertyName == UGameplayHUDViewModel::PROP_CurrentWaveNumber ||
+			 PropertyName == UGameplayHUDViewModel::PROP_TotalWaveCount ||
+			 PropertyName == UGameplayHUDViewModel::PROP_RemainingEnemies)
+	{
+		UpdateWaveInfo(ViewModel->CurrentWaveNumber, ViewModel->TotalWaveCount, ViewModel->RemainingEnemies);
+	}
+	else if (PropertyName == UGameplayHUDViewModel::PROP_AliveAnimalCount ||
+			 PropertyName == UGameplayHUDViewModel::PROP_TotalAnimalCount)
+	{
+		UpdateAnimalCount(ViewModel->AliveAnimalCount, ViewModel->TotalAnimalCount);
+	}
+	else if (PropertyName == UGameplayHUDViewModel::PROP_PlayerCurrentHP ||
+			 PropertyName == UGameplayHUDViewModel::PROP_PlayerMaxHP ||
+			 PropertyName == UGameplayHUDViewModel::PROP_PlayerHPPercent)
+	{
+		UpdatePlayerHealth(ViewModel->PlayerCurrentHP, ViewModel->PlayerMaxHP);
+	}
+	else if (PropertyName == UGameplayHUDViewModel::PROP_DamageBuffPercent)
+	{
+		if (ViewModel->DamageBuffPercent > 0.0f)
+		{
+			ShowDamageBuffIndicator(ViewModel->DamageBuffPercent);
+		}
+	}
+	else if (PropertyName == UGameplayHUDViewModel::PROP_ShouldShowDawnWarning)
+	{
+		if (ViewModel->bShouldShowDawnWarning)
 		{
 			ShowDawnWarning();
 		}
 	}
-
-	// 検知コンポーネントから検知ゲージを更新
-	if (PlayerDetectorComponent.IsValid())
-	{
-		UpdateDetectionGauge(PlayerDetectorComponent->GetDetectionLevel());
-
-		// 撮影中・隠れ中インジケーター
-		// TODO: GASタグから取得するか、コンポーネントから取得
-	}
-
-	// 撮影コンポーネントからカウントを更新
-	if (PlayerPhotographyComponent.IsValid())
-	{
-		UpdatePhotoCount(
-			PlayerPhotographyComponent->GetRemainingPhotos(),
-			10 // MaxPhotos - TODO: コンポーネントから取得
-		);
-
-		// 撮影中インジケーター
-		ShowPhotographingIndicator(PlayerPhotographyComponent->IsPhotographing());
-	}
 }
 
-void UGameplayHUDWidget::CacheSubsystems()
+void UGameplayHUDWidget::HandleAllPropertiesChanged()
 {
-	if (UWorld* World = GetWorld())
-	{
-		NightProgressSubsystem = World->GetSubsystem<UNightProgressSubsystem>();
-		SurveillanceSubsystem = World->GetSubsystem<USurveillanceSubsystem>();
-	}
-
-	// プレイヤーのコンポーネントを取得
-	if (APlayerController* PC = GetOwningPlayer())
-	{
-		if (APawn* Pawn = PC->GetPawn())
-		{
-			PlayerPhotographyComponent = Pawn->FindComponentByClass<UPhotographyComponent>();
-			PlayerDetectorComponent = Pawn->FindComponentByClass<USurveillanceDetectorComponent>();
-		}
-	}
+	RefreshFromViewModel();
 }
 
-void UGameplayHUDWidget::UpdateDetectionGauge(float NormalizedValue)
+void UGameplayHUDWidget::HandleWaveStarted(int32 WaveNumber)
 {
-	if (!DetectionGauge)
+	ShowWaveStartWarning(WaveNumber);
+}
+
+void UGameplayHUDWidget::HandleReaperModeChanged(bool bIsActive)
+{
+	ShowReaperModeIndicator(bIsActive);
+}
+
+void UGameplayHUDWidget::UpdateReaperGauge(float NormalizedValue)
+{
+	if (!ReaperGauge)
 	{
 		return;
 	}
 
 	// ゲージ値を設定
-	DetectionGauge->SetPercent(FMath::Clamp(NormalizedValue, 0.0f, 1.0f));
+	ReaperGauge->SetPercent(FMath::Clamp(NormalizedValue, 0.0f, 1.0f));
 
 	// 色を更新
-	UpdateDetectionGaugeColor(NormalizedValue);
+	UpdateReaperGaugeColor(NormalizedValue);
 
-	// 閾値を超えたら警告表示
-	if (NormalizedValue >= DangerThreshold)
+	// MAXに達したら警告表示
+	if (NormalizedValue >= MaxThreshold)
 	{
-		ShowDetectionWarning();
+		ShowReaperReadyWarning();
 	}
 	else
 	{
-		HideDetectionWarning();
+		HideReaperReadyWarning();
 	}
 }
 
-void UGameplayHUDWidget::UpdateDetectionGaugeColor(float NormalizedValue)
+void UGameplayHUDWidget::UpdateReaperGaugeColor(float NormalizedValue)
 {
-	if (!DetectionGauge)
+	if (!ReaperGauge)
 	{
 		return;
 	}
 
 	FLinearColor GaugeColor;
 
-	if (NormalizedValue >= DangerThreshold)
+	if (NormalizedValue >= MaxThreshold)
 	{
-		GaugeColor = DetectionGaugeDangerColor;
+		GaugeColor = ReaperGaugeMaxColor;
 	}
-	else if (NormalizedValue >= WarningThreshold)
+	else if (NormalizedValue >= ChargeThreshold)
 	{
-		// 警告と危険の間を補間
-		float Alpha = (NormalizedValue - WarningThreshold) / (DangerThreshold - WarningThreshold);
-		GaugeColor = FMath::Lerp(DetectionGaugeWarningColor, DetectionGaugeDangerColor, Alpha);
+		// チャージ中とMAXの間を補間
+		float Alpha = (NormalizedValue - ChargeThreshold) / (MaxThreshold - ChargeThreshold);
+		GaugeColor = FMath::Lerp(ReaperGaugeHighColor, ReaperGaugeMaxColor, Alpha);
 	}
 	else
 	{
-		// 通常と警告の間を補間
-		float Alpha = NormalizedValue / WarningThreshold;
-		GaugeColor = FMath::Lerp(DetectionGaugeNormalColor, DetectionGaugeWarningColor, Alpha);
+		// 通常とチャージ中の間を補間
+		float Alpha = NormalizedValue / ChargeThreshold;
+		GaugeColor = FMath::Lerp(ReaperGaugeNormalColor, ReaperGaugeHighColor, Alpha);
 	}
 
-	DetectionGauge->SetFillColorAndOpacity(GaugeColor);
+	ReaperGauge->SetFillColorAndOpacity(GaugeColor);
 }
 
 void UGameplayHUDWidget::UpdateRemainingTime(float RemainingSeconds)
@@ -163,6 +339,12 @@ void UGameplayHUDWidget::UpdateRemainingTime(float RemainingSeconds)
 	}
 
 	RemainingTimeText->SetText(FormatTime(RemainingSeconds));
+
+	// 残り時間が少なくなったら夜明け警告
+	if (RemainingSeconds <= 30.0f && RemainingSeconds > 0.0f)
+	{
+		ShowDawnWarning();
+	}
 }
 
 FText UGameplayHUDWidget::FormatTime(float Seconds) const
@@ -173,128 +355,234 @@ FText UGameplayHUDWidget::FormatTime(float Seconds) const
 	return FText::FromString(FString::Printf(TEXT("%02d:%02d"), Minutes, Secs));
 }
 
-void UGameplayHUDWidget::UpdatePhotoCount(int32 RemainingPhotos, int32 MaxPhotos)
+void UGameplayHUDWidget::UpdateSoulCount(int32 TotalSouls)
 {
-	if (!PhotoCountText)
+	if (!SoulCountText)
 	{
 		return;
 	}
 
-	FString CountString = FString::Printf(TEXT("%d / %d"), RemainingPhotos, MaxPhotos);
-	PhotoCountText->SetText(FText::FromString(CountString));
+	FString CountString = FString::Printf(TEXT("x %d"), TotalSouls);
+	SoulCountText->SetText(FText::FromString(CountString));
 
-	// フィルム切れ警告
-	if (RemainingPhotos == 0)
+	// 魂アイコンの色を変更（多いほど輝く）
+	if (SoulIcon)
 	{
-		ShowNoFilmWarning();
-	}
-
-	// カメラアイコンの色を変更
-	if (CameraIcon)
-	{
-		if (RemainingPhotos == 0)
-		{
-			CameraIcon->SetColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.5f, 0.5f)); // グレーアウト
-		}
-		else if (RemainingPhotos <= 3)
-		{
-			CameraIcon->SetColorAndOpacity(FLinearColor(0.8f, 0.6f, 0.1f, 1.0f)); // オレンジ警告
-		}
-		else
-		{
-			CameraIcon->SetColorAndOpacity(FLinearColor::White);
-		}
+		float Intensity = FMath::Clamp(TotalSouls / 50.0f, 0.0f, 1.0f);
+		FLinearColor IconColor = FMath::Lerp(
+			FLinearColor(0.6f, 0.4f, 0.8f, 1.0f),  // 薄紫
+			FLinearColor(1.0f, 0.85f, 0.0f, 1.0f), // 金
+			Intensity
+		);
+		SoulIcon->SetColorAndOpacity(IconColor);
 	}
 }
 
-void UGameplayHUDWidget::UpdatePhaseDisplay(int32 PhaseIndex)
+void UGameplayHUDWidget::UpdatePhaseDisplay(EGamePhase Phase)
 {
 	if (!PhaseText)
 	{
 		return;
 	}
 
-	PhaseText->SetText(GetPhaseName(PhaseIndex));
+	PhaseText->SetText(GetPhaseName(Phase));
 }
 
-FText UGameplayHUDWidget::GetPhaseName(int32 PhaseIndex) const
+FText UGameplayHUDWidget::GetPhaseName(EGamePhase Phase) const
 {
-	switch (PhaseIndex)
+	switch (Phase)
 	{
-	case 0:
-		return FText::FromString(TEXT("導入"));
-	case 1:
-		return FText::FromString(TEXT("緩和"));
-	case 2:
-		return FText::FromString(TEXT("クライマックス"));
+	case EGamePhase::Night:
+		return FText::FromString(TEXT("NIGHT PHASE"));
+	case EGamePhase::DawnTransition:
+		return FText::FromString(TEXT("DAWN APPROACHES..."));
+	case EGamePhase::Dawn:
+		return FText::FromString(TEXT("DAWN PHASE"));
+	case EGamePhase::LoopEnd:
+		return FText::FromString(TEXT("LOOP COMPLETE"));
 	default:
 		return FText::FromString(TEXT("---"));
 	}
 }
 
-void UGameplayHUDWidget::ShowDetectionWarning()
+void UGameplayHUDWidget::UpdateWaveInfo(int32 CurrentWave, int32 TotalWaves, int32 InRemainingEnemies)
 {
-	if (DetectionWarningPanel && DetectionWarningPanel->GetVisibility() != ESlateVisibility::Visible)
+	if (WaveInfoText)
 	{
-		DetectionWarningPanel->SetVisibility(ESlateVisibility::Visible);
-		PlayAttentionPulse(DetectionWarningPanel, true);
+		FString WaveString = FString::Printf(TEXT("WAVE %d / %d"), CurrentWave, TotalWaves);
+		WaveInfoText->SetText(FText::FromString(WaveString));
+	}
+
+	if (EnemyCountText)
+	{
+		FString EnemyString = FString::Printf(TEXT("Enemies: %d"), InRemainingEnemies);
+		EnemyCountText->SetText(FText::FromString(EnemyString));
 	}
 }
 
-void UGameplayHUDWidget::HideDetectionWarning()
+void UGameplayHUDWidget::ShowReaperReadyWarning()
 {
-	if (DetectionWarningPanel && DetectionWarningPanel->GetVisibility() == ESlateVisibility::Visible)
+	if (ReaperReadyWarningPanel && ReaperReadyWarningPanel->GetVisibility() != ESlateVisibility::Visible)
 	{
-		StopWidgetAnimation(DetectionWarningPanel);
-		DetectionWarningPanel->SetVisibility(ESlateVisibility::Collapsed);
+		ReaperReadyWarningPanel->SetVisibility(ESlateVisibility::Visible);
+		PlayAttentionPulse(ReaperReadyWarningPanel, true);
+
+		UE_LOG(LogDawnlight, Log, TEXT("[GameplayHUDWidget] リーパーモード発動可能！"));
+	}
+}
+
+void UGameplayHUDWidget::HideReaperReadyWarning()
+{
+	if (ReaperReadyWarningPanel && ReaperReadyWarningPanel->GetVisibility() == ESlateVisibility::Visible)
+	{
+		StopWidgetAnimation(ReaperReadyWarningPanel);
+		ReaperReadyWarningPanel->SetVisibility(ESlateVisibility::Collapsed);
 	}
 }
 
 void UGameplayHUDWidget::ShowDawnWarning()
 {
-	if (DawnWarningPanel)
+	if (DawnWarningPanel && DawnWarningPanel->GetVisibility() != ESlateVisibility::Visible)
 	{
 		DawnWarningPanel->SetVisibility(ESlateVisibility::Visible);
 		PlayAttentionPulse(DawnWarningPanel, true);
 
-		UE_LOG(LogDawnlight, Log, TEXT("[GameplayHUDWidget] 夜明け警告を表示"));
+		UE_LOG(LogDawnlight, Log, TEXT("[GameplayHUDWidget] 夜明けが近い！"));
 	}
 }
 
-void UGameplayHUDWidget::ShowNoFilmWarning()
+void UGameplayHUDWidget::ShowWaveStartWarning(int32 WaveNumber)
 {
-	// フィルム切れの一時的な警告表示
-	UE_LOG(LogDawnlight, Log, TEXT("[GameplayHUDWidget] フィルム切れ警告"));
+	UE_LOG(LogDawnlight, Log, TEXT("[GameplayHUDWidget] Wave %d 開始！"), WaveNumber);
 
-	// TODO: 一時的なポップアップ表示
+	// Waveアナウンスメントテキストを設定
+	if (WaveAnnouncementText)
+	{
+		FString WaveString = FString::Printf(TEXT("WAVE %d"), WaveNumber);
+		WaveAnnouncementText->SetText(FText::FromString(WaveString));
+	}
+
+	// アナウンスメントパネルを表示
+	if (WaveAnnouncementPanel)
+	{
+		WaveAnnouncementPanel->SetVisibility(ESlateVisibility::Visible);
+
+		// パルスアニメーションを再生
+		PlayAttentionPulse(WaveAnnouncementPanel, false);
+	}
+
+	// 一定時間後に非表示にするタイマーを設定
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(WaveAnnouncementTimerHandle);
+		World->GetTimerManager().SetTimer(
+			WaveAnnouncementTimerHandle,
+			this,
+			&UGameplayHUDWidget::HideWaveAnnouncement,
+			WaveAnnouncementDuration,
+			false
+		);
+	}
 }
 
-void UGameplayHUDWidget::ShowPhotographingIndicator(bool bShow)
+void UGameplayHUDWidget::HideWaveAnnouncement()
 {
-	if (PhotographingIndicator)
+	if (WaveAnnouncementPanel)
+	{
+		// フェードアウトしてから非表示にする
+		StopWidgetAnimation(WaveAnnouncementPanel);
+		WaveAnnouncementPanel->SetVisibility(ESlateVisibility::Collapsed);
+	}
+}
+
+void UGameplayHUDWidget::ShowReaperModeIndicator(bool bShow)
+{
+	if (ReaperModeIndicator)
 	{
 		if (bShow)
 		{
-			PhotographingIndicator->SetVisibility(ESlateVisibility::Visible);
+			ReaperModeIndicator->SetVisibility(ESlateVisibility::Visible);
+			PlayAttentionPulse(ReaperModeIndicator, true);
 		}
 		else
 		{
-			PhotographingIndicator->SetVisibility(ESlateVisibility::Collapsed);
+			StopWidgetAnimation(ReaperModeIndicator);
+			ReaperModeIndicator->SetVisibility(ESlateVisibility::Collapsed);
 		}
 	}
 }
 
-void UGameplayHUDWidget::ShowHiddenIndicator(bool bShow)
+void UGameplayHUDWidget::ShowDamageBuffIndicator(float BuffPercent)
 {
-	if (HiddenIndicator)
+	if (BuffIndicator)
 	{
-		if (bShow)
+		BuffIndicator->SetVisibility(ESlateVisibility::Visible);
+	}
+
+	if (BuffPercentText)
+	{
+		FString BuffString = FString::Printf(TEXT("+%.0f%% DMG"), BuffPercent);
+		BuffPercentText->SetText(FText::FromString(BuffString));
+	}
+}
+
+void UGameplayHUDWidget::UpdateAnimalCount(int32 AliveAnimals, int32 TotalAnimals)
+{
+	if (!AnimalCountText)
+	{
+		return;
+	}
+
+	FString AnimalString = FString::Printf(TEXT("Animals: %d / %d"), AliveAnimals, TotalAnimals);
+	AnimalCountText->SetText(FText::FromString(AnimalString));
+}
+
+void UGameplayHUDWidget::UpdatePlayerHealth(float CurrentHP, float MaxHP)
+{
+	// HPバーを更新
+	if (PlayerHealthBar)
+	{
+		const float Percent = MaxHP > 0.0f ? CurrentHP / MaxHP : 0.0f;
+		PlayerHealthBar->SetPercent(FMath::Clamp(Percent, 0.0f, 1.0f));
+
+		// HPに応じて色を変更
+		FLinearColor HealthColor;
+		if (Percent > 0.6f)
 		{
-			HiddenIndicator->SetVisibility(ESlateVisibility::Visible);
+			HealthColor = FLinearColor(0.2f, 0.8f, 0.2f, 1.0f);  // 緑
+		}
+		else if (Percent > 0.3f)
+		{
+			HealthColor = FLinearColor(0.9f, 0.7f, 0.1f, 1.0f);  // 黄
 		}
 		else
 		{
-			HiddenIndicator->SetVisibility(ESlateVisibility::Collapsed);
+			HealthColor = FLinearColor(0.9f, 0.2f, 0.2f, 1.0f);  // 赤
 		}
+		PlayerHealthBar->SetFillColorAndOpacity(HealthColor);
+	}
+
+	// HPテキストを更新
+	if (PlayerHealthText)
+	{
+		FString HealthString = FString::Printf(TEXT("%.0f / %.0f"), CurrentHP, MaxHP);
+		PlayerHealthText->SetText(FText::FromString(HealthString));
+	}
+}
+
+void UGameplayHUDWidget::UpdatePhasePanels(EGamePhase Phase)
+{
+	// Night Phase用パネル
+	if (NightPhasePanel)
+	{
+		const bool bShowNight = (Phase == EGamePhase::Night);
+		NightPhasePanel->SetVisibility(bShowNight ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+
+	// Dawn Phase用パネル
+	if (DawnPhasePanel)
+	{
+		const bool bShowDawn = (Phase == EGamePhase::Dawn);
+		DawnPhasePanel->SetVisibility(bShowDawn ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 }

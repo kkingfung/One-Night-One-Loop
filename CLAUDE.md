@@ -41,13 +41,18 @@
 | **WASD** | 移動 | 8方向移動 |
 | **Space** | リーパーモード | ゲージ満タン時のみ |
 
-### Key Subsystems（予定）
-| Subsystem | 役割 |
-|-----------|------|
-| `SoulReaperGameMode` | フェーズ管理（Night/Dawn切り替え） |
-| `SoulCollectionSubsystem` | 魂収集、インベントリ管理 |
-| `WaveSpawnerSubsystem` | 敵ウェーブスポーン |
-| `ReaperModeComponent` | リーパーモード管理 |
+### Key Subsystems（実装済み）
+| Subsystem/Component | 役割 | パス |
+|---------------------|------|------|
+| `ADawnlightGameMode` | フェーズ管理（Night/Dawn切り替え） | Core/ |
+| `USoulCollectionSubsystem` | 魂収集、インベントリ管理 | Subsystems/ |
+| `UWaveSpawnerSubsystem` | 敵ウェーブスポーン | Subsystems/ |
+| `UAnimalSpawnerSubsystem` | 動物スポーン（夜フェーズ） | Subsystems/ |
+| `UUpgradeSubsystem` | アップグレード管理 | Subsystems/ |
+| `UNightProgressSubsystem` | 夜フェーズ進行管理 | Subsystems/ |
+| `UReaperModeComponent` | リーパーモード管理 | Components/ |
+| `UUISubsystem` | UI・設定管理 | UI/ |
+| `ULevelTransitionSubsystem` | レベル遷移管理 | UI/ |
 
 ### Technology Stack
 - **GAS (Gameplay Ability System)** - アビリティ、バフ/デバフ管理
@@ -70,34 +75,96 @@
 Dawnlight/
 ├── Source/
 │   └── Dawnlight/
-│       ├── Dawnlight.Build.cs          # Module build configuration
-│       ├── Dawnlight.h                  # Module header
-│       ├── Dawnlight.cpp                # Module implementation
-│       ├── Core/                        # Core game systems
-│       │   ├── GameModes/
-│       │   ├── GameStates/
-│       │   └── PlayerControllers/
-│       ├── Characters/                  # Character classes
-│       │   ├── Player/
-│       │   └── NPCs/
-│       ├── Components/                  # Actor components
-│       ├── Subsystems/                  # Game subsystems
-│       ├── Abilities/                   # Gameplay abilities (if using GAS)
-│       ├── AI/                          # AI controllers and behaviors
-│       ├── UI/                          # UMG widgets and HUD
-│       ├── Data/                        # Data assets and tables
-│       └── Utilities/                   # Helper classes and functions
+│       ├── Dawnlight.Build.cs          # モジュールビルド設定
+│       ├── Dawnlight.h                  # モジュールヘッダー
+│       ├── Dawnlight.cpp                # モジュール実装
+│       │
+│       ├── Core/                        # コアゲームシステム
+│       │   ├── DawnlightGameMode.h/cpp      # ゲームモード（フェーズ管理）
+│       │   ├── DawnlightGameState.h/cpp     # ゲームステート
+│       │   └── DawnlightPlayerController.h/cpp  # プレイヤーコントローラー
+│       │
+│       ├── Characters/                  # キャラクタークラス
+│       │   ├── DawnlightCharacter.h/cpp     # プレイヤーキャラクター（死神）
+│       │   ├── AnimalCharacter.h/cpp        # 動物キャラクター（夜フェーズ）
+│       │   └── EnemyCharacter.h/cpp         # 敵キャラクター（夜明けフェーズ）
+│       │
+│       ├── Components/                  # アクターコンポーネント
+│       │   └── ReaperModeComponent.h/cpp    # リーパーモード管理
+│       │
+│       ├── Subsystems/                  # ゲームサブシステム
+│       │   ├── SoulCollectionSubsystem.h/cpp    # 魂収集・インベントリ
+│       │   ├── WaveSpawnerSubsystem.h/cpp       # 敵ウェーブスポーン
+│       │   ├── AnimalSpawnerSubsystem.h/cpp     # 動物スポーン
+│       │   ├── UpgradeSubsystem.h/cpp           # アップグレード管理
+│       │   └── NightProgressSubsystem.h/cpp     # 夜フェーズ進行管理
+│       │
+│       ├── Abilities/                   # GAS関連
+│       │   └── DawnlightAttributeSet.h/cpp  # 属性セット（HP、攻撃力等）
+│       │
+│       ├── Actors/                      # アクター
+│       │   └── SoulReaperLevelSetup.h/cpp   # レベルセットアップアクター
+│       │
+│       ├── Data/                        # データアセット・型定義
+│       │   ├── SoulDataAsset.h/cpp          # 魂定義
+│       │   ├── SoulTypes.h                  # 魂型定義
+│       │   ├── EnemyDataAsset.h/cpp         # 敵定義
+│       │   ├── UpgradeDataAsset.h/cpp       # アップグレード定義
+│       │   └── UpgradeTypes.h               # アップグレード型定義
+│       │
+│       ├── UI/                          # UIシステム
+│       │   ├── UISubsystem.h/cpp            # UI・設定管理サブシステム
+│       │   ├── LevelTransitionSubsystem.h/cpp   # レベル遷移管理
+│       │   ├── MainMenuGameMode.h/cpp       # メインメニュー用ゲームモード
+│       │   ├── DawnlightUITypes.h           # UI型定義
+│       │   ├── DawnlightSaveGame.h/cpp      # セーブデータ
+│       │   │
+│       │   ├── Widgets/                     # ウィジェット
+│       │   │   ├── DawnlightWidgetBase.h/cpp    # ウィジェット基底クラス
+│       │   │   ├── MainMenuWidget.h/cpp         # メインメニュー
+│       │   │   ├── PauseMenuWidget.h/cpp        # ポーズメニュー
+│       │   │   ├── SettingsWidget.h/cpp         # 設定画面
+│       │   │   ├── ConfirmationDialogWidget.h/cpp   # 確認ダイアログ
+│       │   │   ├── GameplayHUDWidget.h/cpp      # ゲームプレイHUD
+│       │   │   ├── GameResultWidget.h/cpp       # ゲーム結果画面
+│       │   │   ├── LoadingScreenWidget.h/cpp    # ローディング画面
+│       │   │   ├── NightCompleteWidget.h/cpp    # 夜完了画面
+│       │   │   ├── SoulParticleWidget.h/cpp     # 魂パーティクル
+│       │   │   └── WidgetUtilities.h/cpp        # ウィジェットユーティリティ
+│       │   │
+│       │   ├── Effects/                     # UIエフェクト
+│       │   │   ├── DetectionGaugeWidget.h/cpp   # 検出ゲージ
+│       │   │   ├── DangerVignetteWidget.h/cpp   # 危険ビネット
+│       │   │   └── NightProgressWidget.h/cpp    # 夜進行表示
+│       │   │
+│       │   ├── Components/                  # UIコンポーネント
+│       │   │   └── UIAnimationComponent.h/cpp   # UIアニメーション
+│       │   │
+│       │   ├── ViewModels/                  # ビューモデル（MVVM）
+│       │   │   ├── ViewModelBase.h/cpp          # VM基底クラス
+│       │   │   └── GameplayHUDViewModel.h/cpp   # HUD用VM
+│       │   │
+│       │   ├── Utilities/                   # UIユーティリティ
+│       │   │   └── UIAnimationLibrary.h/cpp     # アニメーションライブラリ
+│       │   │
+│       │   └── Data/                        # UIデータ
+│       │       └── UIStyleDataAsset.h/cpp       # UIスタイル定義
+│       │
+│       └── Utilities/                   # ユーティリティ
+│           └── DawnlightTags.h/cpp          # Gameplay Tags定義
+│
 ├── Content/
-│   ├── Blueprints/                     # Blueprint assets
-│   ├── Characters/                     # Character assets
-│   ├── Maps/                           # Level assets
-│   ├── Materials/                      # Material assets
-│   ├── Textures/                       # Texture assets
-│   ├── Audio/                          # Audio assets
-│   ├── VFX/                            # Visual effects
-│   ├── UI/                             # UI assets
-│   └── Data/                           # Data tables and curves
-└── Config/                             # Configuration files
+│   ├── Blueprints/                     # Blueprintアセット
+│   ├── Characters/                     # キャラクターアセット
+│   ├── Maps/                           # レベルアセット
+│   ├── Materials/                      # マテリアルアセット
+│   ├── Textures/                       # テクスチャアセット
+│   ├── Audio/                          # オーディオアセット
+│   ├── VFX/                            # ビジュアルエフェクト
+│   ├── UI/                             # UIアセット
+│   └── Data/                           # データテーブル・カーブ
+│
+└── Config/                             # 設定ファイル
 ```
 
 ### Design Patterns
@@ -883,5 +950,54 @@ if (Actor->Implements<UInteractable>())
 
 ---
 
-**Last Updated**: 2025-01-15
+## Third Party Assets
+
+### Player Character
+| Asset | 用途 |
+|-------|------|
+| **Stylized_Death** | プレイヤーキャラクター（死神） |
+
+**アニメーション一覧**:
+- `Idle` - 待機
+- `Walk`, `Run` - 移動
+- `Attack_A`, `Attack_B` - 通常攻撃（左クリック）
+- `Attack_C`, `Attack_D` - 強攻撃（右クリック）
+- `Staff_Attack` - 特殊攻撃（Q）
+- `Roar` - リーパーモード発動
+- `Die`, `Die_Loop` - 死亡
+- `Hit_A`, `Hit_B`, `GetUp` - 被ダメージ
+
+### Animals (Night Phase)
+| Asset | 動物 | 魂タイプ | Demo |
+|-------|------|----------|------|
+| **Animals_Free** | Tiger | Power（攻撃力+5%） | ✓ |
+| | Horse | Speed（移動速度+5%） | ✓ |
+| | Dog | Guard（防御力+5%） | ✓ |
+| | Chicken | Luck（クリティカル+3%） | ✓ |
+| | Deer | Crit（クリティカルダメージ+10%） | |
+| | Kitty | Regen（HP回復+1/s） | |
+| | Penguin | Wild（ランダム効果） | |
+
+### Enemies (Dawn Phase)
+| Asset | 敵タイプ | Demo |
+|-------|----------|------|
+| **ParagonMinions/Down_Minions** | 近接敵（メイン） | ✓ |
+| **ParagonMinions/Dusk_Minions** | 遠距離敵 | |
+| **ParagonMinions/Prime_Helix** | ボス敵 | |
+
+### Environment
+| Asset | 用途 |
+|-------|------|
+| **Necropolis** | ベースマップ（Demo_Necropolis.umap） |
+| | 環境アセット、フォリッジ、VFX |
+
+### VFX
+| Asset | 用途 |
+|-------|------|
+| **Magic_Effects** | 魂収集、リーパーモードVFX |
+| **Realistic_Starter_VFX_Pack_Vol2** | 攻撃ヒット、爆発、炎エフェクト |
+
+---
+
+**Last Updated**: 2025-01-20
 **UE Version**: 5.7

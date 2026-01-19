@@ -4,23 +4,25 @@
 
 #include "CoreMinimal.h"
 #include "DawnlightWidgetBase.h"
+#include "Core/DawnlightGameMode.h"
 #include "GameplayHUDWidget.generated.h"
 
 class UProgressBar;
 class UTextBlock;
 class UImage;
-class UNightProgressSubsystem;
-class USurveillanceSubsystem;
-class UPhotographyComponent;
-class USurveillanceDetectorComponent;
+class UHorizontalBox;
+class UGameplayHUDViewModel;
 
 /**
  * ゲームプレイHUDウィジェット
  *
- * インゲームで表示されるHUD要素を管理
- * - 検知ゲージ
+ * Soul Reaperのインゲームで表示されるHUD要素を管理
+ * ViewModelからデータを受け取り、表示を更新する（MVVMパターン）
+ *
+ * - リーパーゲージ
  * - 残り時間表示
- * - 撮影カウント
+ * - 魂カウント
+ * - フェーズ表示
  * - 警告表示
  */
 UCLASS()
@@ -30,151 +32,254 @@ class DAWNLIGHT_API UGameplayHUDWidget : public UDawnlightWidgetBase
 
 public:
 	// ========================================================================
-	// 更新関数
+	// ViewModel
 	// ========================================================================
 
-	/** 検知ゲージを更新 */
+	/**
+	 * ViewModelを設定
+	 * Widgetを使用する前に必ず呼び出すこと
+	 */
 	UFUNCTION(BlueprintCallable, Category = "HUD")
-	void UpdateDetectionGauge(float NormalizedValue);
+	void SetViewModel(UGameplayHUDViewModel* InViewModel);
 
-	/** 残り時間を更新 */
+	/**
+	 * ViewModelを取得
+	 */
+	UFUNCTION(BlueprintPure, Category = "HUD")
+	UGameplayHUDViewModel* GetViewModel() const { return ViewModel; }
+
+	// ========================================================================
+	// 手動更新関数（ViewModel経由でない直接更新用）
+	// ========================================================================
+
+	/** リーパーゲージを更新 */
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void UpdateReaperGauge(float NormalizedValue);
+
+	/** 残り時間を更新（Night Phase中） */
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void UpdateRemainingTime(float RemainingSeconds);
 
-	/** 撮影カウントを更新 */
+	/** 魂カウントを更新 */
 	UFUNCTION(BlueprintCallable, Category = "HUD")
-	void UpdatePhotoCount(int32 RemainingPhotos, int32 MaxPhotos);
+	void UpdateSoulCount(int32 TotalSouls);
+
+	/** 残り動物数を更新（Night Phase中） */
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void UpdateAnimalCount(int32 AliveAnimals, int32 TotalAnimals);
+
+	/** プレイヤーHPを更新 */
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void UpdatePlayerHealth(float CurrentHP, float MaxHP);
 
 	/** フェーズ表示を更新 */
 	UFUNCTION(BlueprintCallable, Category = "HUD")
-	void UpdatePhaseDisplay(int32 PhaseIndex);
+	void UpdatePhaseDisplay(EGamePhase Phase);
+
+	/** Wave情報を更新（Dawn Phase中） */
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void UpdateWaveInfo(int32 CurrentWave, int32 TotalWaves, int32 RemainingEnemies);
 
 	// ========================================================================
 	// 警告表示
 	// ========================================================================
 
-	/** 検知警告を表示 */
+	/** リーパーゲージMAX警告を表示 */
 	UFUNCTION(BlueprintCallable, Category = "HUD|警告")
-	void ShowDetectionWarning();
+	void ShowReaperReadyWarning();
 
-	/** 検知警告を非表示 */
+	/** リーパーゲージMAX警告を非表示 */
 	UFUNCTION(BlueprintCallable, Category = "HUD|警告")
-	void HideDetectionWarning();
+	void HideReaperReadyWarning();
 
 	/** 夜明け警告を表示 */
 	UFUNCTION(BlueprintCallable, Category = "HUD|警告")
 	void ShowDawnWarning();
 
-	/** フィルム切れ警告を表示 */
+	/** Wave開始警告を表示 */
 	UFUNCTION(BlueprintCallable, Category = "HUD|警告")
-	void ShowNoFilmWarning();
+	void ShowWaveStartWarning(int32 WaveNumber);
 
 	// ========================================================================
 	// 状態表示
 	// ========================================================================
 
-	/** 撮影中表示 */
+	/** リーパーモード表示 */
 	UFUNCTION(BlueprintCallable, Category = "HUD|状態")
-	void ShowPhotographingIndicator(bool bShow);
+	void ShowReaperModeIndicator(bool bShow);
 
-	/** 隠れ中表示 */
+	/** ダメージバフ表示 */
 	UFUNCTION(BlueprintCallable, Category = "HUD|状態")
-	void ShowHiddenIndicator(bool bShow);
+	void ShowDamageBuffIndicator(float BuffPercent);
 
 protected:
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	// ========================================================================
 	// UI要素（Blueprintでバインド）
 	// ========================================================================
 
-	/** 検知ゲージ */
+	/** リーパーゲージ */
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UProgressBar> DetectionGauge;
+	TObjectPtr<UProgressBar> ReaperGauge;
 
 	/** 残り時間テキスト */
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> RemainingTimeText;
 
-	/** 撮影カウントテキスト */
+	/** 魂カウントテキスト */
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UTextBlock> PhotoCountText;
+	TObjectPtr<UTextBlock> SoulCountText;
 
 	/** フェーズテキスト */
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> PhaseText;
 
-	/** 検知警告パネル */
+	/** Wave情報テキスト */
 	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<UWidget> DetectionWarningPanel;
+	TObjectPtr<UTextBlock> WaveInfoText;
+
+	/** 残り敵数テキスト */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> EnemyCountText;
+
+	/** 残り動物数テキスト */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> AnimalCountText;
+
+	/** プレイヤーHPバー */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UProgressBar> PlayerHealthBar;
+
+	/** プレイヤーHPテキスト */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> PlayerHealthText;
+
+	/** Night Phase用パネル */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UWidget> NightPhasePanel;
+
+	/** Dawn Phase用パネル */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UWidget> DawnPhasePanel;
+
+	/** リーパーレディ警告パネル */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UWidget> ReaperReadyWarningPanel;
 
 	/** 夜明け警告パネル */
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UWidget> DawnWarningPanel;
 
-	/** 撮影中インジケーター */
+	/** Wave開始アナウンスメントパネル */
 	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<UWidget> PhotographingIndicator;
+	TObjectPtr<UWidget> WaveAnnouncementPanel;
 
-	/** 隠れ中インジケーター */
+	/** Wave開始アナウンスメントテキスト */
 	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<UWidget> HiddenIndicator;
+	TObjectPtr<UTextBlock> WaveAnnouncementText;
 
-	/** カメラアイコン */
+	/** リーパーモードインジケーター */
 	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<UImage> CameraIcon;
+	TObjectPtr<UWidget> ReaperModeIndicator;
+
+	/** バフ表示インジケーター */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UWidget> BuffIndicator;
+
+	/** バフパーセントテキスト */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> BuffPercentText;
+
+	/** 魂アイコン */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> SoulIcon;
 
 	// ========================================================================
 	// 設定
 	// ========================================================================
 
-	/** 検知ゲージの通常色 */
+	/** リーパーゲージの通常色（魂の色：紫系） */
 	UPROPERTY(EditDefaultsOnly, Category = "HUD|スタイル")
-	FLinearColor DetectionGaugeNormalColor;
+	FLinearColor ReaperGaugeNormalColor;
 
-	/** 検知ゲージの警告色 */
+	/** リーパーゲージの高い色（チャージ中：オレンジ） */
 	UPROPERTY(EditDefaultsOnly, Category = "HUD|スタイル")
-	FLinearColor DetectionGaugeWarningColor;
+	FLinearColor ReaperGaugeHighColor;
 
-	/** 検知ゲージの危険色 */
+	/** リーパーゲージのMAX色（発動可能：金色） */
 	UPROPERTY(EditDefaultsOnly, Category = "HUD|スタイル")
-	FLinearColor DetectionGaugeDangerColor;
+	FLinearColor ReaperGaugeMaxColor;
 
-	/** 警告表示の閾値 */
+	/** チャージ中閾値 */
 	UPROPERTY(EditDefaultsOnly, Category = "HUD|設定")
-	float WarningThreshold = 0.5f;
+	float ChargeThreshold = 0.5f;
 
-	/** 危険表示の閾値 */
+	/** MAX閾値 */
 	UPROPERTY(EditDefaultsOnly, Category = "HUD|設定")
-	float DangerThreshold = 0.8f;
+	float MaxThreshold = 1.0f;
 
 private:
 	// ========================================================================
-	// サブシステム参照
+	// ViewModel
 	// ========================================================================
 
 	UPROPERTY()
-	TWeakObjectPtr<UNightProgressSubsystem> NightProgressSubsystem;
+	TObjectPtr<UGameplayHUDViewModel> ViewModel;
 
-	UPROPERTY()
-	TWeakObjectPtr<USurveillanceSubsystem> SurveillanceSubsystem;
+	// ========================================================================
+	// ViewModelイベントハンドラ
+	// ========================================================================
 
-	UPROPERTY()
-	TWeakObjectPtr<UPhotographyComponent> PlayerPhotographyComponent;
+	/** ViewModelのプロパティ変更ハンドラ */
+	UFUNCTION()
+	void HandlePropertyChanged(FName PropertyName);
 
-	UPROPERTY()
-	TWeakObjectPtr<USurveillanceDetectorComponent> PlayerDetectorComponent;
+	/** ViewModelの全プロパティ変更ハンドラ */
+	UFUNCTION()
+	void HandleAllPropertiesChanged();
 
-	/** サブシステムを取得 */
-	void CacheSubsystems();
+	/** Wave開始イベントハンドラ */
+	UFUNCTION()
+	void HandleWaveStarted(int32 WaveNumber);
 
-	/** 検知ゲージの色を更新 */
-	void UpdateDetectionGaugeColor(float NormalizedValue);
+	/** リーパーモード変更ハンドラ */
+	UFUNCTION()
+	void HandleReaperModeChanged(bool bIsActive);
+
+	// ========================================================================
+	// 内部関数
+	// ========================================================================
+
+	/** ViewModelにバインド */
+	void BindToViewModel();
+
+	/** ViewModelからアンバインド */
+	void UnbindFromViewModel();
+
+	/** ViewModelからUIを全更新 */
+	void RefreshFromViewModel();
+
+	/** Waveアナウンスメントを非表示タイマー */
+	FTimerHandle WaveAnnouncementTimerHandle;
+
+	/** アナウンスメント表示時間（秒） */
+	float WaveAnnouncementDuration = 2.0f;
+
+	/** Waveアナウンスメントを非表示にする */
+	void HideWaveAnnouncement();
+
+	/** リーパーゲージの色を更新 */
+	void UpdateReaperGaugeColor(float NormalizedValue);
 
 	/** 時間をフォーマット */
 	FText FormatTime(float Seconds) const;
 
 	/** フェーズ名を取得 */
-	FText GetPhaseName(int32 PhaseIndex) const;
+	FText GetPhaseName(EGamePhase Phase) const;
+
+	/** フェーズに応じたパネル表示を切り替え */
+	void UpdatePhasePanels(EGamePhase Phase);
 };

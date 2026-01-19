@@ -2,9 +2,7 @@
 
 #include "DawnlightPlayerController.h"
 #include "Dawnlight.h"
-#include "DawnlightCharacter.h"
-#include "PhotographyComponent.h"
-#include "HideableComponent.h"
+#include "Characters/DawnlightCharacter.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
@@ -53,14 +51,14 @@ void ADawnlightPlayerController::SetupInputComponent()
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ADawnlightPlayerController::HandleMove);
 	}
 
-	if (PhotographAction)
+	if (AttackAction)
 	{
-		EnhancedInputComponent->BindAction(PhotographAction, ETriggerEvent::Started, this, &ADawnlightPlayerController::HandlePhotograph);
+		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ADawnlightPlayerController::HandleAttack);
 	}
 
-	if (HideAction)
+	if (ReaperModeAction)
 	{
-		EnhancedInputComponent->BindAction(HideAction, ETriggerEvent::Started, this, &ADawnlightPlayerController::HandleHide);
+		EnhancedInputComponent->BindAction(ReaperModeAction, ETriggerEvent::Started, this, &ADawnlightPlayerController::HandleReaperMode);
 	}
 
 	if (InteractAction)
@@ -88,104 +86,33 @@ void ADawnlightPlayerController::HandleMove(const FInputActionValue& Value)
 	}
 }
 
-void ADawnlightPlayerController::HandlePhotograph(const FInputActionValue& Value)
+void ADawnlightPlayerController::HandleAttack(const FInputActionValue& Value)
 {
-	UE_LOG(LogDawnlight, Log, TEXT("DawnlightPlayerController: 撮影入力を受信"));
+	UE_LOG(LogDawnlight, Log, TEXT("DawnlightPlayerController: 攻撃入力を受信"));
 
-	// キャラクターのPhotographyComponentを取得
+	// キャラクターに攻撃を委譲
 	if (ADawnlightCharacter* DawnlightChar = Cast<ADawnlightCharacter>(GetPawn()))
 	{
-		if (UPhotographyComponent* PhotoComp = DawnlightChar->FindComponentByClass<UPhotographyComponent>())
+		// 攻撃中でなければ通常攻撃を実行
+		if (!DawnlightChar->IsAttacking())
 		{
-			if (PhotoComp->IsPhotographing())
-			{
-				// 撮影中なら即シャッターを切る
-				PhotoComp->ExecutePhotograph();
-			}
-			else
-			{
-				// 撮影開始
-				PhotoComp->StartPhotograph();
-			}
+			DawnlightChar->PerformLightAttack();
 		}
 	}
 }
 
-void ADawnlightPlayerController::HandleHide(const FInputActionValue& Value)
+void ADawnlightPlayerController::HandleReaperMode(const FInputActionValue& Value)
 {
-	UE_LOG(LogDawnlight, Log, TEXT("DawnlightPlayerController: 隠れる入力を受信"));
+	UE_LOG(LogDawnlight, Log, TEXT("DawnlightPlayerController: リーパーモード入力を受信"));
 
-	ADawnlightCharacter* DawnlightChar = Cast<ADawnlightCharacter>(GetPawn());
-	if (!DawnlightChar)
+	// キャラクターにリーパーモード発動を委譲
+	if (ADawnlightCharacter* DawnlightChar = Cast<ADawnlightCharacter>(GetPawn()))
 	{
-		return;
-	}
-
-	// 既に隠れている場合は出る
-	if (DawnlightChar->IsHidden())
-	{
-		// 現在隠れている場所を探す
-		TArray<AActor*> OverlappingActors;
-		DawnlightChar->GetOverlappingActors(OverlappingActors);
-
-		for (AActor* Actor : OverlappingActors)
+		// リーパーモードが発動可能な場合のみ発動
+		if (DawnlightChar->CanActivateReaperMode())
 		{
-			if (UHideableComponent* HideComp = Actor->FindComponentByClass<UHideableComponent>())
-			{
-				if (HideComp->IsPlayerHidden(DawnlightChar))
-				{
-					HideComp->UnhidePlayer(DawnlightChar);
-					return;
-				}
-			}
+			DawnlightChar->ActivateReaperMode();
 		}
-		return;
-	}
-
-	// 近くの隠れ場所を探す
-	const float SearchRadius = 200.0f;
-	TArray<FOverlapResult> OverlapResults;
-	FCollisionShape SphereShape = FCollisionShape::MakeSphere(SearchRadius);
-
-	GetWorld()->OverlapMultiByChannel(
-		OverlapResults,
-		DawnlightChar->GetActorLocation(),
-		FQuat::Identity,
-		ECC_WorldStatic,
-		SphereShape
-	);
-
-	// 最も近い隠れ場所を探す
-	UHideableComponent* NearestHideSpot = nullptr;
-	float NearestDistance = MAX_FLT;
-
-	for (const FOverlapResult& Result : OverlapResults)
-	{
-		if (AActor* Actor = Result.GetActor())
-		{
-			if (UHideableComponent* HideComp = Actor->FindComponentByClass<UHideableComponent>())
-			{
-				if (HideComp->CanHide())
-				{
-					const float Distance = FVector::Distance(DawnlightChar->GetActorLocation(), Actor->GetActorLocation());
-					if (Distance < NearestDistance)
-					{
-						NearestDistance = Distance;
-						NearestHideSpot = HideComp;
-					}
-				}
-			}
-		}
-	}
-
-	// 隠れ場所が見つかったら隠れる
-	if (NearestHideSpot)
-	{
-		NearestHideSpot->HidePlayer(DawnlightChar);
-	}
-	else
-	{
-		UE_LOG(LogDawnlight, Log, TEXT("DawnlightPlayerController: 近くに隠れ場所がありません"));
 	}
 }
 

@@ -35,6 +35,10 @@ public:
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
+	/** 属性セットを取得 */
+	UFUNCTION(BlueprintPure, Category = "アビリティ")
+	UDawnlightAttributeSet* GetDawnlightAttributeSet() const { return AttributeSet; }
+
 	// ========================================================================
 	// 移動
 	// ========================================================================
@@ -86,6 +90,10 @@ public:
 	/** リーパーモードが発動可能かどうか */
 	UFUNCTION(BlueprintPure, Category = "リーパー")
 	bool CanActivateReaperMode() const;
+
+	/** リーパーゲージを追加 */
+	UFUNCTION(BlueprintCallable, Category = "リーパー")
+	void AddReaperGauge(float Amount);
 
 	// ========================================================================
 	// ダメージ

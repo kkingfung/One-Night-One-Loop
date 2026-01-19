@@ -15,12 +15,12 @@
 	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
 /**
- * Dawnlight 属性セット
+ * Soul Reaper 属性セット
  *
  * GAS用の属性定義
- * - 検知レベル
- * - 緊張度
- * - 夜の進行度
+ * - HP/戦闘関連
+ * - リーパーモード
+ * - バフシステム
  */
 UCLASS()
 class DAWNLIGHT_API UDawnlightAttributeSet : public UAttributeSet
@@ -38,50 +38,127 @@ public:
 	virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 
 	// ========================================================================
-	// 監視属性
+	// HP属性
 	// ========================================================================
 
-	/** 検知レベル（0.0 - 100.0） */
-	UPROPERTY(BlueprintReadOnly, Category = "監視", ReplicatedUsing = OnRep_DetectionLevel)
-	FGameplayAttributeData DetectionLevel;
-	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, DetectionLevel)
+	/** 現在のHP */
+	UPROPERTY(BlueprintReadOnly, Category = "HP", ReplicatedUsing = OnRep_Health)
+	FGameplayAttributeData Health;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, Health)
 
-	/** 監視レベルによる危険度（0.0 - 100.0） */
-	UPROPERTY(BlueprintReadOnly, Category = "監視", ReplicatedUsing = OnRep_SurveillanceDanger)
-	FGameplayAttributeData SurveillanceDanger;
-	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, SurveillanceDanger)
-
-	// ========================================================================
-	// 緊張度属性
-	// ========================================================================
-
-	/** 緊張度（0.0 - 100.0） */
-	UPROPERTY(BlueprintReadOnly, Category = "緊張度", ReplicatedUsing = OnRep_TensionLevel)
-	FGameplayAttributeData TensionLevel;
-	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, TensionLevel)
+	/** 最大HP */
+	UPROPERTY(BlueprintReadOnly, Category = "HP", ReplicatedUsing = OnRep_MaxHealth)
+	FGameplayAttributeData MaxHealth;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, MaxHealth)
 
 	// ========================================================================
-	// 進行度属性
+	// 戦闘属性
 	// ========================================================================
 
-	/** 夜の進行度（0.0 - 1.0） */
-	UPROPERTY(BlueprintReadOnly, Category = "進行", ReplicatedUsing = OnRep_NightProgress)
-	FGameplayAttributeData NightProgress;
-	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, NightProgress)
+	/** 基本攻撃力 */
+	UPROPERTY(BlueprintReadOnly, Category = "戦闘", ReplicatedUsing = OnRep_BaseDamage)
+	FGameplayAttributeData BaseDamage;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, BaseDamage)
+
+	/** 移動速度 */
+	UPROPERTY(BlueprintReadOnly, Category = "戦闘", ReplicatedUsing = OnRep_MoveSpeed)
+	FGameplayAttributeData MoveSpeed;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, MoveSpeed)
+
+	/** 攻撃速度（倍率） */
+	UPROPERTY(BlueprintReadOnly, Category = "戦闘", ReplicatedUsing = OnRep_AttackSpeed)
+	FGameplayAttributeData AttackSpeed;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, AttackSpeed)
+
+	/** 防御力（ダメージ軽減率 0-100%） */
+	UPROPERTY(BlueprintReadOnly, Category = "戦闘", ReplicatedUsing = OnRep_Defense)
+	FGameplayAttributeData Defense;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, Defense)
 
 	// ========================================================================
-	// 撮影属性
+	// リーパーモード属性
 	// ========================================================================
 
-	/** 撮影カウント */
-	UPROPERTY(BlueprintReadOnly, Category = "撮影", ReplicatedUsing = OnRep_PhotoCount)
-	FGameplayAttributeData PhotoCount;
-	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, PhotoCount)
+	/** リーパーゲージ（0-100） */
+	UPROPERTY(BlueprintReadOnly, Category = "リーパー", ReplicatedUsing = OnRep_ReaperGauge)
+	FGameplayAttributeData ReaperGauge;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, ReaperGauge)
 
-	/** 撮影可能な最大数 */
-	UPROPERTY(BlueprintReadOnly, Category = "撮影", ReplicatedUsing = OnRep_MaxPhotoCount)
-	FGameplayAttributeData MaxPhotoCount;
-	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, MaxPhotoCount)
+	/** リーパーゲージ最大値 */
+	UPROPERTY(BlueprintReadOnly, Category = "リーパー", ReplicatedUsing = OnRep_MaxReaperGauge)
+	FGameplayAttributeData MaxReaperGauge;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, MaxReaperGauge)
+
+	// ========================================================================
+	// バフ属性（魂から得られるバフ）
+	// ========================================================================
+
+	/** ダメージバフ倍率（1.0 = 100%、1.5 = 150%） */
+	UPROPERTY(BlueprintReadOnly, Category = "バフ", ReplicatedUsing = OnRep_DamageMultiplier)
+	FGameplayAttributeData DamageMultiplier;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, DamageMultiplier)
+
+	/** スピードバフ倍率（1.0 = 100%） */
+	UPROPERTY(BlueprintReadOnly, Category = "バフ", ReplicatedUsing = OnRep_SpeedMultiplier)
+	FGameplayAttributeData SpeedMultiplier;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, SpeedMultiplier)
+
+	/** 防御バフ加算（直接Defense属性に加算される） */
+	UPROPERTY(BlueprintReadOnly, Category = "バフ", ReplicatedUsing = OnRep_DefenseBonus)
+	FGameplayAttributeData DefenseBonus;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, DefenseBonus)
+
+	/** クールダウン短縮率（0-50%） */
+	UPROPERTY(BlueprintReadOnly, Category = "バフ", ReplicatedUsing = OnRep_CooldownReduction)
+	FGameplayAttributeData CooldownReduction;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, CooldownReduction)
+
+	/** ラック（クリティカル率やドロップ率に影響、0-100） */
+	UPROPERTY(BlueprintReadOnly, Category = "バフ", ReplicatedUsing = OnRep_Luck)
+	FGameplayAttributeData Luck;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, Luck)
+
+	// ========================================================================
+	// メタ属性（一時的なダメージ計算用）
+	// ========================================================================
+
+	/** 受けるダメージ（一時的、計算後にHealthに適用） */
+	UPROPERTY(BlueprintReadOnly, Category = "メタ")
+	FGameplayAttributeData IncomingDamage;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, IncomingDamage)
+
+	/** 与えるダメージ（一時的、計算後にターゲットに適用） */
+	UPROPERTY(BlueprintReadOnly, Category = "メタ")
+	FGameplayAttributeData OutgoingDamage;
+	ATTRIBUTE_ACCESSORS(UDawnlightAttributeSet, OutgoingDamage)
+
+	// ========================================================================
+	// 便利関数
+	// ========================================================================
+
+	/** 最終ダメージを計算（バフ込み） */
+	UFUNCTION(BlueprintPure, Category = "戦闘")
+	float GetFinalDamage() const;
+
+	/** 最終移動速度を計算（バフ込み） */
+	UFUNCTION(BlueprintPure, Category = "戦闘")
+	float GetFinalMoveSpeed() const;
+
+	/** 最終防御力を計算（バフ込み） */
+	UFUNCTION(BlueprintPure, Category = "戦闘")
+	float GetFinalDefense() const;
+
+	/** HP割合を取得（0-1） */
+	UFUNCTION(BlueprintPure, Category = "HP")
+	float GetHealthPercent() const;
+
+	/** リーパーゲージ割合を取得（0-1） */
+	UFUNCTION(BlueprintPure, Category = "リーパー")
+	float GetReaperGaugePercent() const;
+
+	/** リーパーモード発動可能かどうか */
+	UFUNCTION(BlueprintPure, Category = "リーパー")
+	bool CanActivateReaperMode() const;
 
 protected:
 	// ========================================================================
@@ -90,23 +167,48 @@ protected:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	// HP
 	UFUNCTION()
-	virtual void OnRep_DetectionLevel(const FGameplayAttributeData& OldValue);
+	virtual void OnRep_Health(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
-	virtual void OnRep_SurveillanceDanger(const FGameplayAttributeData& OldValue);
+	virtual void OnRep_MaxHealth(const FGameplayAttributeData& OldValue);
+
+	// 戦闘
+	UFUNCTION()
+	virtual void OnRep_BaseDamage(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
-	virtual void OnRep_TensionLevel(const FGameplayAttributeData& OldValue);
+	virtual void OnRep_MoveSpeed(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
-	virtual void OnRep_NightProgress(const FGameplayAttributeData& OldValue);
+	virtual void OnRep_AttackSpeed(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
-	virtual void OnRep_PhotoCount(const FGameplayAttributeData& OldValue);
+	virtual void OnRep_Defense(const FGameplayAttributeData& OldValue);
+
+	// リーパー
+	UFUNCTION()
+	virtual void OnRep_ReaperGauge(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
-	virtual void OnRep_MaxPhotoCount(const FGameplayAttributeData& OldValue);
+	virtual void OnRep_MaxReaperGauge(const FGameplayAttributeData& OldValue);
+
+	// バフ
+	UFUNCTION()
+	virtual void OnRep_DamageMultiplier(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
+	virtual void OnRep_SpeedMultiplier(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
+	virtual void OnRep_DefenseBonus(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
+	virtual void OnRep_CooldownReduction(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
+	virtual void OnRep_Luck(const FGameplayAttributeData& OldValue);
 
 private:
 	/** 属性値をクランプ */

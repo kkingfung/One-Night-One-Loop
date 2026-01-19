@@ -14,11 +14,11 @@ class USettingsWidget;
 class UConfirmationDialogWidget;
 
 /**
- * Dawnlight プレイヤーコントローラー
+ * Soul Reaper プレイヤーコントローラー
  *
  * Enhanced Inputを使用したプレイヤー入力管理
  * - 移動入力
- * - 撮影/隠れる/インタラクトのトリガー
+ * - 攻撃/リーパーモード/インタラクトのトリガー
  * - 入力コンテキストの切り替え
  */
 UCLASS()
@@ -40,11 +40,11 @@ protected:
 	/** 移動入力ハンドラ */
 	void HandleMove(const FInputActionValue& Value);
 
-	/** 撮影入力ハンドラ */
-	void HandlePhotograph(const FInputActionValue& Value);
+	/** 攻撃入力ハンドラ */
+	void HandleAttack(const FInputActionValue& Value);
 
-	/** 隠れる入力ハンドラ */
-	void HandleHide(const FInputActionValue& Value);
+	/** リーパーモード入力ハンドラ */
+	void HandleReaperMode(const FInputActionValue& Value);
 
 	/** インタラクト入力ハンドラ */
 	void HandleInteract(const FInputActionValue& Value);
@@ -73,25 +73,21 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "入力|コンテキスト")
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;
 
-	/** 隠れ中の入力マッピングコンテキスト */
+	/** リーパーモード中の入力マッピングコンテキスト */
 	UPROPERTY(EditDefaultsOnly, Category = "入力|コンテキスト")
-	TObjectPtr<UInputMappingContext> HiddenMappingContext;
-
-	/** 撮影中の入力マッピングコンテキスト */
-	UPROPERTY(EditDefaultsOnly, Category = "入力|コンテキスト")
-	TObjectPtr<UInputMappingContext> PhotographingMappingContext;
+	TObjectPtr<UInputMappingContext> ReaperModeMappingContext;
 
 	/** 移動アクション */
 	UPROPERTY(EditDefaultsOnly, Category = "入力|アクション")
 	TObjectPtr<UInputAction> MoveAction;
 
-	/** 撮影アクション */
+	/** 攻撃アクション */
 	UPROPERTY(EditDefaultsOnly, Category = "入力|アクション")
-	TObjectPtr<UInputAction> PhotographAction;
+	TObjectPtr<UInputAction> AttackAction;
 
-	/** 隠れるアクション */
+	/** リーパーモードアクション */
 	UPROPERTY(EditDefaultsOnly, Category = "入力|アクション")
-	TObjectPtr<UInputAction> HideAction;
+	TObjectPtr<UInputAction> ReaperModeAction;
 
 	/** インタラクトアクション */
 	UPROPERTY(EditDefaultsOnly, Category = "入力|アクション")

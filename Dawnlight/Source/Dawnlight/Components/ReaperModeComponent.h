@@ -102,6 +102,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "リーパーモード|設定", meta = (ClampMin = "1.0"))
 	float ReaperSpeedMultiplier = 1.3f;
 
+	/** リーパーモード中の攻撃速度倍率 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "リーパーモード|設定", meta = (ClampMin = "1.0"))
+	float ReaperAttackSpeedMultiplier = 1.5f;
+
 	/** 発動時のNiagaraエフェクト */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "リーパーモード|エフェクト")
 	TObjectPtr<UNiagaraSystem> ActivationEffect;
@@ -127,6 +131,9 @@ private:
 
 	/** 発動前の移動速度倍率（復元用） */
 	float OriginalSpeedMultiplier;
+
+	/** 発動前の攻撃速度（復元用） */
+	float OriginalAttackSpeed;
 
 	/** 持続時間タイマー */
 	FTimerHandle DurationTimerHandle;

@@ -51,9 +51,19 @@ void ADawnlightPlayerController::SetupInputComponent()
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ADawnlightPlayerController::HandleMove);
 	}
 
-	if (AttackAction)
+	if (LightAttackAction)
 	{
-		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ADawnlightPlayerController::HandleAttack);
+		EnhancedInputComponent->BindAction(LightAttackAction, ETriggerEvent::Started, this, &ADawnlightPlayerController::HandleLightAttack);
+	}
+
+	if (HeavyAttackAction)
+	{
+		EnhancedInputComponent->BindAction(HeavyAttackAction, ETriggerEvent::Started, this, &ADawnlightPlayerController::HandleHeavyAttack);
+	}
+
+	if (SpecialAttackAction)
+	{
+		EnhancedInputComponent->BindAction(SpecialAttackAction, ETriggerEvent::Started, this, &ADawnlightPlayerController::HandleSpecialAttack);
 	}
 
 	if (ReaperModeAction)
@@ -86,17 +96,44 @@ void ADawnlightPlayerController::HandleMove(const FInputActionValue& Value)
 	}
 }
 
-void ADawnlightPlayerController::HandleAttack(const FInputActionValue& Value)
+void ADawnlightPlayerController::HandleLightAttack(const FInputActionValue& Value)
 {
-	UE_LOG(LogDawnlight, Log, TEXT("DawnlightPlayerController: 攻撃入力を受信"));
+	UE_LOG(LogDawnlight, Verbose, TEXT("DawnlightPlayerController: 通常攻撃入力を受信"));
 
-	// キャラクターに攻撃を委譲
+	// キャラクターに通常攻撃を委譲
 	if (ADawnlightCharacter* DawnlightChar = Cast<ADawnlightCharacter>(GetPawn()))
 	{
-		// 攻撃中でなければ通常攻撃を実行
 		if (!DawnlightChar->IsAttacking())
 		{
 			DawnlightChar->PerformLightAttack();
+		}
+	}
+}
+
+void ADawnlightPlayerController::HandleHeavyAttack(const FInputActionValue& Value)
+{
+	UE_LOG(LogDawnlight, Verbose, TEXT("DawnlightPlayerController: 強攻撃入力を受信"));
+
+	// キャラクターに強攻撃を委譲
+	if (ADawnlightCharacter* DawnlightChar = Cast<ADawnlightCharacter>(GetPawn()))
+	{
+		if (!DawnlightChar->IsAttacking())
+		{
+			DawnlightChar->PerformHeavyAttack();
+		}
+	}
+}
+
+void ADawnlightPlayerController::HandleSpecialAttack(const FInputActionValue& Value)
+{
+	UE_LOG(LogDawnlight, Verbose, TEXT("DawnlightPlayerController: 特殊攻撃入力を受信"));
+
+	// キャラクターに特殊攻撃を委譲
+	if (ADawnlightCharacter* DawnlightChar = Cast<ADawnlightCharacter>(GetPawn()))
+	{
+		if (!DawnlightChar->IsAttacking())
+		{
+			DawnlightChar->PerformSpecialAttack();
 		}
 	}
 }

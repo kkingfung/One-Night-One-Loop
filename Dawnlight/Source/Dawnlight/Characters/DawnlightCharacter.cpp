@@ -4,6 +4,7 @@
 #include "Dawnlight.h"
 #include "DawnlightTags.h"
 #include "DawnlightAttributeSet.h"
+#include "Components/ReaperModeComponent.h"
 #include "AbilitySystemComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
@@ -27,23 +28,14 @@ ADawnlightCharacter::ADawnlightCharacter()
 	SpecialAttackMultiplier = 1.5f;
 
 	// ========================================================================
-	// リーパーモード設定
-	// ========================================================================
-	ReaperModeDuration = 10.0f;
-	ReaperDamageMultiplier = 2.0f;
-	ReaperAttackSpeedMultiplier = 1.5f;
-
-	// ========================================================================
 	// HP設定
 	// ========================================================================
 	MaxHealth = 100.0f;
 	CurrentHealth = MaxHealth;
-	ReaperGauge = 0.0f;
 
 	// ========================================================================
 	// 状態初期化
 	// ========================================================================
-	bIsInReaperMode = false;
 	bIsAttacking = false;
 	bIsDead = false;
 
@@ -81,6 +73,9 @@ ADawnlightCharacter::ADawnlightCharacter()
 	// 属性セットを作成
 	AttributeSet = CreateDefaultSubobject<UDawnlightAttributeSet>(TEXT("AttributeSet"));
 
+	// リーパーモードコンポーネントを作成
+	ReaperModeComponent = CreateDefaultSubobject<UReaperModeComponent>(TEXT("ReaperModeComponent"));
+
 	// ========================================================================
 	// CharacterMovement設定
 	// ========================================================================
@@ -110,6 +105,9 @@ void ADawnlightCharacter::BeginPlay()
 
 	// HPを最大値にリセット
 	CurrentHealth = MaxHealth;
+
+	// リーパーモードコンポーネントのイベントをバインド
+	BindReaperModeEvents();
 
 	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: BeginPlay - HP: %f/%f"), CurrentHealth, MaxHealth);
 }
@@ -173,8 +171,8 @@ float ADawnlightCharacter::GetCurrentMoveSpeed() const
 
 	float Speed = NormalMoveSpeed;
 
-	// リーパーモード中は速度アップ
-	if (bIsInReaperMode)
+	// リーパーモード中は速度アップ（コンポーネント経由）
+	if (ReaperModeComponent && ReaperModeComponent->IsReaperModeActive())
 	{
 		Speed *= ReaperModeSpeedMultiplier;
 	}
@@ -198,8 +196,9 @@ void ADawnlightCharacter::PerformLightAttack()
 	// モンタージュ再生（設定されていれば）
 	if (LightAttackMontage)
 	{
-		const float PlayRate = bIsInReaperMode ? ReaperAttackSpeedMultiplier : 1.0f;
-		PlayAnimMontage(LightAttackMontage, PlayRate);
+		// 攻撃速度はAttributeSetから取得（ReaperModeComponent経由でバフが適用済み）
+		const float AttackSpeed = AttributeSet ? AttributeSet->GetAttackSpeed() : 1.0f;
+		PlayAnimMontage(LightAttackMontage, AttackSpeed);
 	}
 
 	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: Light Attack performed"));
@@ -225,8 +224,9 @@ void ADawnlightCharacter::PerformHeavyAttack()
 	// モンタージュ再生（設定されていれば）
 	if (HeavyAttackMontage)
 	{
-		const float PlayRate = bIsInReaperMode ? ReaperAttackSpeedMultiplier : 1.0f;
-		PlayAnimMontage(HeavyAttackMontage, PlayRate);
+		// 攻撃速度はAttributeSetから取得（ReaperModeComponent経由でバフが適用済み）
+		const float AttackSpeed = AttributeSet ? AttributeSet->GetAttackSpeed() : 1.0f;
+		PlayAnimMontage(HeavyAttackMontage, AttackSpeed);
 	}
 
 	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: Heavy Attack performed"));
@@ -251,8 +251,9 @@ void ADawnlightCharacter::PerformSpecialAttack()
 	// モンタージュ再生（設定されていれば）
 	if (SpecialAttackMontage)
 	{
-		const float PlayRate = bIsInReaperMode ? ReaperAttackSpeedMultiplier : 1.0f;
-		PlayAnimMontage(SpecialAttackMontage, PlayRate);
+		// 攻撃速度はAttributeSetから取得（ReaperModeComponent経由でバフが適用済み）
+		const float AttackSpeed = AttributeSet ? AttributeSet->GetAttackSpeed() : 1.0f;
+		PlayAnimMontage(SpecialAttackMontage, AttackSpeed);
 	}
 
 	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: Special Attack performed"));
@@ -271,91 +272,50 @@ bool ADawnlightCharacter::IsAttacking() const
 }
 
 // ============================================================================
-// リーパーモード
+// リーパーモード（ReaperModeComponentに委譲）
 // ============================================================================
 
 void ADawnlightCharacter::ActivateReaperMode()
 {
-	if (!CanActivateReaperMode())
+	if (!ReaperModeComponent || bIsDead)
 	{
 		return;
 	}
 
-	bIsInReaperMode = true;
-	ReaperGauge = 0.0f; // ゲージをリセット
-
-	// 発動アニメーション再生
-	if (ReaperActivationMontage)
+	// コンポーネントに発動を委譲
+	if (ReaperModeComponent->ActivateReaperMode())
 	{
-		PlayAnimMontage(ReaperActivationMontage);
+		// 発動アニメーション再生
+		if (ReaperActivationMontage)
+		{
+			PlayAnimMontage(ReaperActivationMontage);
+		}
 	}
-
-	// タイマー設定（持続時間後に終了）
-	GetWorldTimerManager().SetTimer(
-		ReaperModeTimerHandle,
-		this,
-		&ADawnlightCharacter::DeactivateReaperMode,
-		ReaperModeDuration,
-		false
-	);
-
-	// デリゲート発火
-	OnReaperModeActivated.Broadcast();
-
-	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: REAPER MODE ACTIVATED! Duration: %f seconds"), ReaperModeDuration);
-}
-
-void ADawnlightCharacter::DeactivateReaperMode()
-{
-	if (!bIsInReaperMode)
-	{
-		return;
-	}
-
-	bIsInReaperMode = false;
-
-	// タイマーをクリア
-	GetWorldTimerManager().ClearTimer(ReaperModeTimerHandle);
-
-	// デリゲート発火
-	OnReaperModeDeactivated.Broadcast();
-
-	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: Reaper Mode deactivated"));
 }
 
 bool ADawnlightCharacter::IsInReaperMode() const
 {
-	return bIsInReaperMode;
+	return ReaperModeComponent ? ReaperModeComponent->IsReaperModeActive() : false;
 }
 
 float ADawnlightCharacter::GetReaperGaugePercent() const
 {
-	return FMath::Clamp(ReaperGauge / 100.0f, 0.0f, 1.0f);
+	return ReaperModeComponent ? ReaperModeComponent->GetReaperGaugePercent() : 0.0f;
 }
 
 bool ADawnlightCharacter::CanActivateReaperMode() const
 {
-	return !bIsDead && !bIsInReaperMode && ReaperGauge >= 100.0f;
+	return !bIsDead && ReaperModeComponent && ReaperModeComponent->CanActivateReaperMode();
 }
 
 void ADawnlightCharacter::AddReaperGauge(float Amount)
 {
-	// リーパーモード中はゲージを増やさない
-	if (bIsInReaperMode || bIsDead)
+	if (bIsDead || !ReaperModeComponent)
 	{
 		return;
 	}
 
-	const float OldGauge = ReaperGauge;
-	ReaperGauge = FMath::Clamp(ReaperGauge + Amount, 0.0f, 100.0f);
-
-	UE_LOG(LogDawnlight, Verbose, TEXT("SoulReaper: リーパーゲージ追加: %.1f → %.1f / 100"), OldGauge, ReaperGauge);
-
-	// ゲージが満タンになったらログ出力
-	if (OldGauge < 100.0f && ReaperGauge >= 100.0f)
-	{
-		UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: リーパーゲージ満タン！スペースキーで発動可能"));
-	}
+	ReaperModeComponent->AddReaperGauge(Amount);
 }
 
 // ============================================================================
@@ -403,7 +363,10 @@ void ADawnlightCharacter::HandleDeath()
 	bIsDead = true;
 
 	// リーパーモードを強制終了
-	DeactivateReaperMode();
+	if (ReaperModeComponent)
+	{
+		ReaperModeComponent->DeactivateReaperMode();
+	}
 
 	// デリゲート発火
 	OnPlayerDeath.Broadcast();
@@ -436,4 +399,28 @@ FGameplayTagContainer ADawnlightCharacter::GetCurrentTags() const
 		AbilitySystemComponent->GetOwnedGameplayTags(OwnedTags);
 	}
 	return OwnedTags;
+}
+
+void ADawnlightCharacter::BindReaperModeEvents()
+{
+	if (!ReaperModeComponent)
+	{
+		return;
+	}
+
+	// コンポーネントのイベントをキャラクターのデリゲートに転送
+	ReaperModeComponent->OnReaperModeActivated.AddDynamic(this, &ADawnlightCharacter::OnReaperModeActivatedCallback);
+	ReaperModeComponent->OnReaperModeDeactivated.AddDynamic(this, &ADawnlightCharacter::OnReaperModeDeactivatedCallback);
+
+	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: リーパーモードイベントをバインドしました"));
+}
+
+void ADawnlightCharacter::OnReaperModeActivatedCallback()
+{
+	OnReaperModeActivated.Broadcast();
+}
+
+void ADawnlightCharacter::OnReaperModeDeactivatedCallback()
+{
+	OnReaperModeDeactivated.Broadcast();
 }

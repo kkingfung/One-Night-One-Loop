@@ -12,6 +12,7 @@ class UAbilitySystemComponent;
 class UDawnlightAttributeSet;
 class USpringArmComponent;
 class UCameraComponent;
+class UReaperModeComponent;
 
 /**
  * Soul Reaper プレイヤーキャラクター
@@ -155,6 +156,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "アビリティ", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UDawnlightAttributeSet> AttributeSet;
 
+	/** リーパーモードコンポーネント */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "リーパー", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UReaperModeComponent> ReaperModeComponent;
+
 	// ========================================================================
 	// 移動設定
 	// ========================================================================
@@ -195,22 +200,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "戦闘|アニメーション")
 	TObjectPtr<UAnimMontage> SpecialAttackMontage;
 
-	// ========================================================================
-	// リーパーモード設定
-	// ========================================================================
-
-	/** リーパーモード持続時間 */
-	UPROPERTY(EditDefaultsOnly, Category = "リーパー")
-	float ReaperModeDuration;
-
-	/** リーパーモード中のダメージ倍率 */
-	UPROPERTY(EditDefaultsOnly, Category = "リーパー")
-	float ReaperDamageMultiplier;
-
-	/** リーパーモード中の攻撃速度倍率 */
-	UPROPERTY(EditDefaultsOnly, Category = "リーパー")
-	float ReaperAttackSpeedMultiplier;
-
 	/** リーパーモード発動モンタージュ（Roar） */
 	UPROPERTY(EditDefaultsOnly, Category = "リーパー|アニメーション")
 	TObjectPtr<UAnimMontage> ReaperActivationMontage;
@@ -240,9 +229,6 @@ private:
 	// 内部状態
 	// ========================================================================
 
-	/** リーパーモード中 */
-	bool bIsInReaperMode;
-
 	/** 攻撃中 */
 	bool bIsAttacking;
 
@@ -255,12 +241,6 @@ private:
 	/** 最大HP */
 	float MaxHealth;
 
-	/** リーパーゲージ（0-100） */
-	float ReaperGauge;
-
-	/** リーパーモード用タイマー */
-	FTimerHandle ReaperModeTimerHandle;
-
 	// ========================================================================
 	// 内部関数
 	// ========================================================================
@@ -271,9 +251,21 @@ private:
 	/** 現在のGameplayTagsを取得 */
 	FGameplayTagContainer GetCurrentTags() const;
 
-	/** リーパーモードを終了 */
-	void DeactivateReaperMode();
+	/** リーパーモードコンポーネントのイベントに接続 */
+	void BindReaperModeEvents();
 
 	/** 死亡処理 */
 	void HandleDeath();
+
+	// ========================================================================
+	// リーパーモードイベントコールバック
+	// ========================================================================
+
+	/** リーパーモード発動時のコールバック（コンポーネントからの転送用） */
+	UFUNCTION()
+	void OnReaperModeActivatedCallback();
+
+	/** リーパーモード終了時のコールバック（コンポーネントからの転送用） */
+	UFUNCTION()
+	void OnReaperModeDeactivatedCallback();
 };

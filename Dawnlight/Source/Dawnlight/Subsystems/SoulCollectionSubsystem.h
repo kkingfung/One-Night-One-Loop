@@ -6,10 +6,36 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "GameplayTagContainer.h"
 #include "Data/SoulDataAsset.h"
+#include "Data/SoulTypes.h"
 #include "SoulCollectionSubsystem.generated.h"
 
 class USoulDataAsset;
 class UDawnlightAttributeSet;
+
+/**
+ * コンボキル情報
+ */
+USTRUCT(BlueprintType)
+struct DAWNLIGHT_API FComboKillInfo
+{
+	GENERATED_BODY()
+
+	/** 現在のコンボ数 */
+	UPROPERTY(BlueprintReadOnly, Category = "コンボ")
+	int32 CurrentCombo = 0;
+
+	/** 最大コンボ数（このセッション） */
+	UPROPERTY(BlueprintReadOnly, Category = "コンボ")
+	int32 MaxCombo = 0;
+
+	/** 最後のキル時刻 */
+	UPROPERTY(BlueprintReadOnly, Category = "コンボ")
+	float LastKillTime = 0.0f;
+
+	/** コンボボーナスで獲得した追加魂数 */
+	UPROPERTY(BlueprintReadOnly, Category = "コンボ")
+	int32 BonusSoulsFromCombo = 0;
+};
 
 /**
  * 魂収集イベントデータ
@@ -164,6 +190,61 @@ public:
 	const USoulDataAsset* GetRandomSoulData() const;
 
 	// ========================================================================
+	// コンボキルシステム
+	// ========================================================================
+
+	/**
+	 * キルを記録（コンボ判定）
+	 * @param KillLocation キル位置
+	 * @return コンボボーナスで追加される魂数
+	 */
+	UFUNCTION(BlueprintCallable, Category = "コンボ")
+	int32 RecordKill(const FVector& KillLocation);
+
+	/** 現在のコンボ情報を取得 */
+	UFUNCTION(BlueprintPure, Category = "コンボ")
+	const FComboKillInfo& GetComboInfo() const { return ComboInfo; }
+
+	/** コンボをリセット */
+	UFUNCTION(BlueprintCallable, Category = "コンボ")
+	void ResetCombo();
+
+	/** コンボタイムアウト時間（秒） */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "コンボ|設定")
+	float ComboTimeout = 2.0f;
+
+	/** コンボボーナス閾値とボーナス魂数 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "コンボ|設定")
+	TMap<int32, int32> ComboThresholds;
+
+	// ========================================================================
+	// ソウルセットボーナス
+	// ========================================================================
+
+	/**
+	 * アクティブなセットボーナスを取得
+	 * @param SoulTag 魂タグ
+	 * @return アクティブなセットボーナスのリスト
+	 */
+	UFUNCTION(BlueprintPure, Category = "セットボーナス")
+	TArray<FSoulSetBonus> GetActiveSetBonuses(const FGameplayTag& SoulTag) const;
+
+	/**
+	 * 全てのアクティブなセットボーナスを取得
+	 * @return 全てのアクティブなセットボーナス（魂タグ→ボーナスリスト）
+	 */
+	UFUNCTION(BlueprintPure, Category = "セットボーナス")
+	TMap<FGameplayTag, FSoulSetBonus> GetAllActiveSetBonuses() const;
+
+	/**
+	 * セットボーナスを登録
+	 * @param SoulTag 対象の魂タグ
+	 * @param Bonus ボーナス定義
+	 */
+	UFUNCTION(BlueprintCallable, Category = "セットボーナス")
+	void RegisterSetBonus(const FGameplayTag& SoulTag, const FSoulSetBonus& Bonus);
+
+	// ========================================================================
 	// デリゲート
 	// ========================================================================
 
@@ -176,6 +257,16 @@ public:
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBuffsApplied);
 	UPROPERTY(BlueprintAssignable, Category = "イベント")
 	FOnBuffsApplied OnBuffsApplied;
+
+	/** コンボ更新時のデリゲート */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnComboUpdated, int32, ComboCount, int32, BonusSouls);
+	UPROPERTY(BlueprintAssignable, Category = "イベント")
+	FOnComboUpdated OnComboUpdated;
+
+	/** セットボーナス達成時のデリゲート */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSetBonusAchieved, const FGameplayTag&, SoulTag, const FSoulSetBonus&, Bonus);
+	UPROPERTY(BlueprintAssignable, Category = "イベント")
+	FOnSetBonusAchieved OnSetBonusAchieved;
 
 protected:
 	// ========================================================================
@@ -194,6 +285,17 @@ protected:
 	UPROPERTY()
 	TArray<FSoulBuffEffect> AppliedBuffs;
 
+	/** コンボ情報 */
+	UPROPERTY()
+	FComboKillInfo ComboInfo;
+
+	/** セットボーナス定義（魂タグ→ボーナスリスト） - UPROPERTYは使用不可（TArrayがTMapの値のため） */
+	TMap<FGameplayTag, TArray<FSoulSetBonus>> SetBonusDefinitions;
+
+	/** 達成済みセットボーナス（再通知防止用） */
+	UPROPERTY()
+	TSet<FString> AchievedSetBonuses;
+
 	// ========================================================================
 	// 内部関数
 	// ========================================================================
@@ -203,4 +305,16 @@ protected:
 
 	/** バフ効果を属性セットから除去 */
 	void RemoveBuffEffect(UDawnlightAttributeSet* AttributeSet, const FSoulBuffEffect& Buff);
+
+	/** デフォルトのコンボ閾値を初期化 */
+	void InitializeDefaultComboThresholds();
+
+	/** デフォルトのセットボーナスを初期化 */
+	void InitializeDefaultSetBonuses();
+
+	/** セットボーナスの達成をチェック */
+	void CheckSetBonusAchievement(const FGameplayTag& SoulTag, int32 NewCount);
+
+	/** セットボーナスキーを生成（再通知防止用） */
+	FString MakeSetBonusKey(const FGameplayTag& SoulTag, int32 RequiredCount) const;
 };

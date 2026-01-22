@@ -40,8 +40,14 @@ protected:
 	/** 移動入力ハンドラ */
 	void HandleMove(const FInputActionValue& Value);
 
-	/** 攻撃入力ハンドラ */
-	void HandleAttack(const FInputActionValue& Value);
+	/** 通常攻撃入力ハンドラ */
+	void HandleLightAttack(const FInputActionValue& Value);
+
+	/** 強攻撃入力ハンドラ */
+	void HandleHeavyAttack(const FInputActionValue& Value);
+
+	/** 特殊攻撃入力ハンドラ */
+	void HandleSpecialAttack(const FInputActionValue& Value);
 
 	/** リーパーモード入力ハンドラ */
 	void HandleReaperMode(const FInputActionValue& Value);
@@ -81,9 +87,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "入力|アクション")
 	TObjectPtr<UInputAction> MoveAction;
 
-	/** 攻撃アクション */
+	/** 通常攻撃アクション（左クリック） */
 	UPROPERTY(EditDefaultsOnly, Category = "入力|アクション")
-	TObjectPtr<UInputAction> AttackAction;
+	TObjectPtr<UInputAction> LightAttackAction;
+
+	/** 強攻撃アクション（右クリック） */
+	UPROPERTY(EditDefaultsOnly, Category = "入力|アクション")
+	TObjectPtr<UInputAction> HeavyAttackAction;
+
+	/** 特殊攻撃アクション（Q） */
+	UPROPERTY(EditDefaultsOnly, Category = "入力|アクション")
+	TObjectPtr<UInputAction> SpecialAttackAction;
 
 	/** リーパーモードアクション */
 	UPROPERTY(EditDefaultsOnly, Category = "入力|アクション")

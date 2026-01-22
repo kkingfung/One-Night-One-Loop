@@ -17,9 +17,11 @@ UReaperModeComponent::UReaperModeComponent()
 	ReaperModeDuration = 10.0f;
 	ReaperDamageMultiplier = 2.0f;
 	ReaperSpeedMultiplier = 1.3f;
+	ReaperAttackSpeedMultiplier = 1.5f;
 	bIsReaperModeActive = false;
 	OriginalDamageMultiplier = 1.0f;
 	OriginalSpeedMultiplier = 1.0f;
+	OriginalAttackSpeed = 1.0f;
 }
 
 void UReaperModeComponent::BeginPlay()
@@ -192,14 +194,17 @@ void UReaperModeComponent::ApplyReaperBuffs()
 	// 現在の値を保存
 	OriginalDamageMultiplier = AttributeSet->GetDamageMultiplier();
 	OriginalSpeedMultiplier = AttributeSet->GetSpeedMultiplier();
+	OriginalAttackSpeed = AttributeSet->GetAttackSpeed();
 
 	// リーパーモードのバフを適用
 	AttributeSet->SetDamageMultiplier(OriginalDamageMultiplier * ReaperDamageMultiplier);
 	AttributeSet->SetSpeedMultiplier(OriginalSpeedMultiplier * ReaperSpeedMultiplier);
+	AttributeSet->SetAttackSpeed(OriginalAttackSpeed * ReaperAttackSpeedMultiplier);
 
-	UE_LOG(LogDawnlight, Log, TEXT("[ReaperModeComponent] バフ適用: ダメージ %.1fx → %.1fx, 速度 %.1fx → %.1fx"),
+	UE_LOG(LogDawnlight, Log, TEXT("[ReaperModeComponent] バフ適用: ダメージ %.1fx → %.1fx, 移動速度 %.1fx → %.1fx, 攻撃速度 %.1fx → %.1fx"),
 		OriginalDamageMultiplier, AttributeSet->GetDamageMultiplier(),
-		OriginalSpeedMultiplier, AttributeSet->GetSpeedMultiplier());
+		OriginalSpeedMultiplier, AttributeSet->GetSpeedMultiplier(),
+		OriginalAttackSpeed, AttributeSet->GetAttackSpeed());
 }
 
 void UReaperModeComponent::RemoveReaperBuffs()
@@ -213,9 +218,10 @@ void UReaperModeComponent::RemoveReaperBuffs()
 	// 元の値に復元
 	AttributeSet->SetDamageMultiplier(OriginalDamageMultiplier);
 	AttributeSet->SetSpeedMultiplier(OriginalSpeedMultiplier);
+	AttributeSet->SetAttackSpeed(OriginalAttackSpeed);
 
-	UE_LOG(LogDawnlight, Log, TEXT("[ReaperModeComponent] バフ解除: ダメージ %.1fx, 速度 %.1fx"),
-		OriginalDamageMultiplier, OriginalSpeedMultiplier);
+	UE_LOG(LogDawnlight, Log, TEXT("[ReaperModeComponent] バフ解除: ダメージ %.1fx, 移動速度 %.1fx, 攻撃速度 %.1fx"),
+		OriginalDamageMultiplier, OriginalSpeedMultiplier, OriginalAttackSpeed);
 }
 
 void UReaperModeComponent::AddReaperGauge(float Amount)

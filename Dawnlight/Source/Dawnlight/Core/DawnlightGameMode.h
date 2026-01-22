@@ -9,10 +9,16 @@
 
 class UNightProgressSubsystem;
 class USoulCollectionSubsystem;
+class UUpgradeSubsystem;
+class UWaveSpawnerSubsystem;
 class UGameplayHUDWidget;
 class UGameResultWidget;
+class UUpgradeSelectionWidget;
+class USetBonusDisplayWidget;
 class ADawnlightCharacter;
 class UDawnlightAttributeSet;
+class UUpgradeDataAsset;
+class UEnemyDataAsset;
 
 /**
  * ゲームフェーズ
@@ -199,6 +205,14 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ShowResultScreen(bool bVictory);
 
+	/** アップグレード選択画面を表示 */
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ShowUpgradeSelection(int32 WaveNumber);
+
+	/** アップグレード選択画面を非表示 */
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void HideUpgradeSelection();
+
 	// ========================================================================
 	// 設定
 	// ========================================================================
@@ -235,6 +249,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "設定|Dawn Phase")
 	float DawnTransitionDuration;
 
+	/** デフォルト敵データアセット（ウェーブに敵が指定されていない場合に使用） */
+	UPROPERTY(EditDefaultsOnly, Category = "設定|Dawn Phase")
+	TObjectPtr<UEnemyDataAsset> DefaultEnemyData;
+
 	/** ゲーム開始時に自動でNight Phaseを開始するか */
 	UPROPERTY(EditDefaultsOnly, Category = "設定")
 	bool bAutoStart;
@@ -250,6 +268,14 @@ protected:
 	/** 結果画面ウィジェットクラス */
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UGameResultWidget> ResultWidgetClass;
+
+	/** アップグレード選択ウィジェットクラス */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UUpgradeSelectionWidget> UpgradeSelectionWidgetClass;
+
+	/** セットボーナス表示ウィジェットクラス */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<USetBonusDisplayWidget> SetBonusDisplayWidgetClass;
 
 private:
 	// ========================================================================
@@ -279,6 +305,25 @@ private:
 
 	/** 収集した魂のバフを適用 */
 	void ApplyCollectedSoulBuffs();
+
+	/** ウィジェット初期化 */
+	void InitializeUpgradeWidgets();
+
+	/** アップグレード選択完了時のコールバック */
+	UFUNCTION()
+	void OnUpgradeSelectionComplete(UUpgradeDataAsset* SelectedUpgrade);
+
+	/** WaveSpawnerからのウェーブ完了コールバック */
+	UFUNCTION()
+	void OnWaveSpawnerWaveCompleted(int32 WaveNumber, bool bSuccess);
+
+	/** WaveSpawnerからの全ウェーブ完了コールバック */
+	UFUNCTION()
+	void OnWaveSpawnerAllWavesCompleted();
+
+	/** WaveSpawnerからの敵撃破コールバック */
+	UFUNCTION()
+	void OnWaveSpawnerEnemyKilled(AEnemyCharacter* Enemy);
 
 	// ========================================================================
 	// 状態
@@ -314,6 +359,12 @@ private:
 	UPROPERTY()
 	TWeakObjectPtr<USoulCollectionSubsystem> SoulCollectionSubsystem;
 
+	UPROPERTY()
+	TWeakObjectPtr<UUpgradeSubsystem> UpgradeSubsystem;
+
+	UPROPERTY()
+	TWeakObjectPtr<UWaveSpawnerSubsystem> WaveSpawnerSubsystem;
+
 	// ========================================================================
 	// ウィジェット参照
 	// ========================================================================
@@ -323,6 +374,12 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UGameResultWidget> ResultWidget;
+
+	UPROPERTY()
+	TObjectPtr<UUpgradeSelectionWidget> UpgradeSelectionWidget;
+
+	UPROPERTY()
+	TObjectPtr<USetBonusDisplayWidget> SetBonusDisplayWidget;
 
 	// ========================================================================
 	// タイマー

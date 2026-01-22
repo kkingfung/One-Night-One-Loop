@@ -24,6 +24,15 @@ AEnemyCharacter::AEnemyCharacter()
 	AttackDamage = 10.0f;
 	bIsAttackOnCooldown = false;
 
+	// ボスデフォルト値
+	bIsBoss = false;
+	CurrentBossPhase = 1;
+	MaxBossPhases = 3;
+	SpecialAttackCooldown = 10.0f;
+	SpecialAttackDamage = 50.0f;
+	AreaAttackRadius = 300.0f;
+	bIsSpecialAttackOnCooldown = false;
+
 	// キャラクター移動設定
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
@@ -45,13 +54,20 @@ void AEnemyCharacter::BeginPlay()
 	// EnemyDataからパラメータを初期化
 	InitializeFromEnemyData();
 
+	// ボスの場合、フェーズ閾値を初期化
+	if (bIsBoss)
+	{
+		InitializeDefaultPhaseThresholds();
+	}
+
 	// プレイヤーをキャッシュ
 	CachedPlayer = UGameplayStatics::GetPlayerPawn(this, 0);
 
 	// 追跡状態で開始
 	BehaviorState = EEnemyBehaviorState::Chasing;
 
-	UE_LOG(LogDawnlight, Log, TEXT("[EnemyCharacter] %s がスポーン HP: %.0f"), *GetName(), CurrentHealth);
+	UE_LOG(LogDawnlight, Log, TEXT("[EnemyCharacter] %s がスポーン HP: %.0f %s"),
+		*GetName(), CurrentHealth, bIsBoss ? TEXT("[BOSS]") : TEXT(""));
 }
 
 void AEnemyCharacter::Tick(float DeltaTime)
@@ -83,6 +99,12 @@ void AEnemyCharacter::Tick(float DeltaTime)
 
 	default:
 		break;
+	}
+
+	// ボス専用処理
+	if (bIsBoss)
+	{
+		ProcessBossLogic(DeltaTime);
 	}
 }
 
@@ -278,6 +300,12 @@ void AEnemyCharacter::TakeDamageFromPlayer(float DamageAmount, AActor* DamageCau
 	// ダメージイベント
 	OnDamageTaken(DamageAmount, CurrentHealth);
 
+	// ボスの場合、フェーズ遷移をチェック
+	if (bIsBoss)
+	{
+		CheckBossPhaseTransition();
+	}
+
 	// 死亡判定
 	if (CurrentHealth <= 0.0f)
 	{
@@ -335,4 +363,118 @@ float AEnemyCharacter::GetHealthPercent() const
 	}
 
 	return CurrentHealth / MaxHealth;
+}
+
+// ========================================================================
+// ボス関連の実装
+// ========================================================================
+
+void AEnemyCharacter::PerformBossSpecialAttack()
+{
+	if (!bIsBoss || bIsSpecialAttackOnCooldown || !IsAlive())
+	{
+		return;
+	}
+
+	UE_LOG(LogDawnlight, Log, TEXT("[EnemyCharacter] %s: ボス特殊攻撃実行 (Phase: %d, Damage: %.0f)"),
+		*GetName(), CurrentBossPhase, SpecialAttackDamage);
+
+	// クールダウン開始
+	bIsSpecialAttackOnCooldown = true;
+	GetWorld()->GetTimerManager().SetTimer(
+		SpecialAttackCooldownTimerHandle,
+		this,
+		&AEnemyCharacter::OnSpecialAttackCooldownEnd,
+		SpecialAttackCooldown,
+		false
+	);
+
+	// 範囲攻撃を実行（プレイヤー位置を中心に）
+	if (CachedPlayer.IsValid())
+	{
+		PerformAreaAttack(CachedPlayer->GetActorLocation(), AreaAttackRadius, SpecialAttackDamage);
+	}
+
+	// ボス特殊攻撃イベント（Blueprint実装可能）
+	OnBossSpecialAttack();
+}
+
+void AEnemyCharacter::PerformAreaAttack(FVector CenterLocation, float Radius, float Damage)
+{
+	// プレイヤーが範囲内にいるかチェック
+	if (!CachedPlayer.IsValid())
+	{
+		return;
+	}
+
+	const float DistanceToPlayer = FVector::Dist(CenterLocation, CachedPlayer->GetActorLocation());
+	if (DistanceToPlayer <= Radius)
+	{
+		if (ADawnlightCharacter* PlayerChar = Cast<ADawnlightCharacter>(CachedPlayer.Get()))
+		{
+			PlayerChar->TakeDamageAmount(Damage);
+			UE_LOG(LogDawnlight, Log, TEXT("[EnemyCharacter] %s: 範囲攻撃がプレイヤーにヒット (Damage: %.0f)"),
+				*GetName(), Damage);
+		}
+	}
+}
+
+void AEnemyCharacter::CheckBossPhaseTransition()
+{
+	if (!bIsBoss || PhaseHealthThresholds.Num() == 0)
+	{
+		return;
+	}
+
+	const float CurrentHPPercent = GetHealthPercent();
+
+	// 現在のフェーズより上のフェーズで、HP閾値を下回ったものがあるかチェック
+	for (int32 i = CurrentBossPhase - 1; i < PhaseHealthThresholds.Num(); ++i)
+	{
+		if (CurrentHPPercent <= PhaseHealthThresholds[i])
+		{
+			const int32 NewPhase = i + 2;  // フェーズは1から始まる、閾値配列は0から
+			if (NewPhase > CurrentBossPhase && NewPhase <= MaxBossPhases)
+			{
+				CurrentBossPhase = NewPhase;
+
+				UE_LOG(LogDawnlight, Log, TEXT("[EnemyCharacter] %s: ボスフェーズ移行 -> Phase %d"),
+					*GetName(), CurrentBossPhase);
+
+				// フェーズ変更イベント
+				OnBossPhaseChanged(CurrentBossPhase);
+				break;
+			}
+		}
+	}
+}
+
+void AEnemyCharacter::OnSpecialAttackCooldownEnd()
+{
+	bIsSpecialAttackOnCooldown = false;
+}
+
+void AEnemyCharacter::ProcessBossLogic(float DeltaTime)
+{
+	// 攻撃状態の時、特殊攻撃を試みる
+	if (BehaviorState == EEnemyBehaviorState::Attacking && !bIsSpecialAttackOnCooldown)
+	{
+		PerformBossSpecialAttack();
+	}
+}
+
+void AEnemyCharacter::InitializeDefaultPhaseThresholds()
+{
+	// フェーズ閾値が設定されていない場合、デフォルト値を設定
+	if (PhaseHealthThresholds.Num() == 0)
+	{
+		// 3フェーズの場合: 66%, 33%でフェーズ移行
+		// Phase 1 -> Phase 2: HP 66%以下
+		// Phase 2 -> Phase 3: HP 33%以下
+		PhaseHealthThresholds.Add(0.66f);  // Phase 1 -> 2
+		PhaseHealthThresholds.Add(0.33f);  // Phase 2 -> 3
+
+		UE_LOG(LogDawnlight, Log, TEXT("[EnemyCharacter] %s: デフォルトのボスフェーズ閾値を設定 [66%%, 33%%]"),
+			*GetName());
+	}
 }

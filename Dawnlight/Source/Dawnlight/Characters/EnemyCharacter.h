@@ -93,6 +93,38 @@ public:
 	float AttackDamage = 10.0f;
 
 	// ========================================================================
+	// ボス設定
+	// ========================================================================
+
+	/** ボスかどうか */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "敵|ボス")
+	bool bIsBoss = false;
+
+	/** ボスの現在フェーズ（1から開始） */
+	UPROPERTY(BlueprintReadOnly, Category = "敵|ボス")
+	int32 CurrentBossPhase = 1;
+
+	/** ボスの最大フェーズ数 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "敵|ボス", meta = (ClampMin = "1", EditCondition = "bIsBoss"))
+	int32 MaxBossPhases = 3;
+
+	/** フェーズ移行するHP閾値（パーセント、0.0-1.0） */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "敵|ボス", meta = (EditCondition = "bIsBoss"))
+	TArray<float> PhaseHealthThresholds;
+
+	/** ボスの特殊攻撃クールダウン（秒） */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "敵|ボス", meta = (ClampMin = "1.0", EditCondition = "bIsBoss"))
+	float SpecialAttackCooldown = 10.0f;
+
+	/** ボスの特殊攻撃ダメージ */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "敵|ボス", meta = (ClampMin = "0.0", EditCondition = "bIsBoss"))
+	float SpecialAttackDamage = 50.0f;
+
+	/** ボスの範囲攻撃半径 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "敵|ボス", meta = (ClampMin = "0.0", EditCondition = "bIsBoss"))
+	float AreaAttackRadius = 300.0f;
+
+	// ========================================================================
 	// エフェクト
 	// ========================================================================
 
@@ -148,9 +180,33 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "敵|イベント")
 	void OnAttack();
 
+	/** ボスフェーズ変更時のイベント（Blueprint実装可能） */
+	UFUNCTION(BlueprintImplementableEvent, Category = "敵|イベント")
+	void OnBossPhaseChanged(int32 NewPhase);
+
+	/** ボス特殊攻撃時のイベント（Blueprint実装可能） */
+	UFUNCTION(BlueprintImplementableEvent, Category = "敵|イベント")
+	void OnBossSpecialAttack();
+
 	/** 死亡時のC++デリゲート（WaveSpawner等で使用） */
 	UPROPERTY(BlueprintAssignable, Category = "敵|イベント")
 	FOnEnemyDeathDelegate OnEnemyDeathDelegate;
+
+	// ========================================================================
+	// ボス専用関数
+	// ========================================================================
+
+	/** ボスの特殊攻撃を実行 */
+	UFUNCTION(BlueprintCallable, Category = "敵|ボス")
+	void PerformBossSpecialAttack();
+
+	/** 範囲攻撃を実行 */
+	UFUNCTION(BlueprintCallable, Category = "敵|ボス")
+	void PerformAreaAttack(FVector CenterLocation, float Radius, float Damage);
+
+	/** ボスフェーズをチェックして更新 */
+	UFUNCTION(BlueprintCallable, Category = "敵|ボス")
+	void CheckBossPhaseTransition();
 
 protected:
 	// ========================================================================
@@ -187,4 +243,23 @@ protected:
 
 	/** EnemyDataからパラメータを初期化 */
 	void InitializeFromEnemyData();
+
+	// ========================================================================
+	// ボス内部処理
+	// ========================================================================
+
+	/** ボス特殊攻撃のクールダウン中かどうか */
+	bool bIsSpecialAttackOnCooldown;
+
+	/** ボス特殊攻撃タイマー */
+	FTimerHandle SpecialAttackCooldownTimerHandle;
+
+	/** ボス特殊攻撃クールダウン終了 */
+	void OnSpecialAttackCooldownEnd();
+
+	/** ボス処理を実行（Tick内で呼び出し） */
+	void ProcessBossLogic(float DeltaTime);
+
+	/** デフォルトのフェーズ閾値を初期化 */
+	void InitializeDefaultPhaseThresholds();
 };

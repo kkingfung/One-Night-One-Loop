@@ -4,11 +4,18 @@
 #include "Dawnlight.h"
 #include "Subsystems/NightProgressSubsystem.h"
 #include "Subsystems/SoulCollectionSubsystem.h"
+#include "Subsystems/UpgradeSubsystem.h"
+#include "Subsystems/WaveSpawnerSubsystem.h"
 #include "Abilities/DawnlightAttributeSet.h"
 #include "Characters/DawnlightCharacter.h"
+#include "Characters/EnemyCharacter.h"
+#include "Data/EnemyDataAsset.h"
 #include "UI/Widgets/GameplayHUDWidget.h"
 #include "UI/Widgets/GameResultWidget.h"
+#include "UI/Widgets/UpgradeSelectionWidget.h"
+#include "UI/Widgets/SetBonusDisplayWidget.h"
 #include "UI/LevelTransitionSubsystem.h"
+#include "Data/UpgradeDataAsset.h"
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
@@ -97,6 +104,7 @@ void ADawnlightGameMode::InitializeSubsystems()
 	{
 		NightProgressSubsystem = World->GetSubsystem<UNightProgressSubsystem>();
 		SoulCollectionSubsystem = World->GetSubsystem<USoulCollectionSubsystem>();
+		UpgradeSubsystem = World->GetSubsystem<UUpgradeSubsystem>();
 
 		if (NightProgressSubsystem.IsValid())
 		{
@@ -107,7 +115,26 @@ void ADawnlightGameMode::InitializeSubsystems()
 		{
 			UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] SoulCollectionSubsystem を取得"));
 		}
+
+		if (UpgradeSubsystem.IsValid())
+		{
+			UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] UpgradeSubsystem を取得"));
+		}
+
+		WaveSpawnerSubsystem = World->GetSubsystem<UWaveSpawnerSubsystem>();
+		if (WaveSpawnerSubsystem.IsValid())
+		{
+			UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] WaveSpawnerSubsystem を取得"));
+
+			// ウェーブイベントをバインド
+			WaveSpawnerSubsystem->OnWaveCompleted.AddDynamic(this, &ADawnlightGameMode::OnWaveSpawnerWaveCompleted);
+			WaveSpawnerSubsystem->OnAllWavesCompleted.AddDynamic(this, &ADawnlightGameMode::OnWaveSpawnerAllWavesCompleted);
+			WaveSpawnerSubsystem->OnEnemyKilled.AddDynamic(this, &ADawnlightGameMode::OnWaveSpawnerEnemyKilled);
+		}
 	}
+
+	// アップグレードウィジェットを初期化
+	InitializeUpgradeWidgets();
 }
 
 // ========================================================================
@@ -212,6 +239,36 @@ void ADawnlightGameMode::StartDawnPhase()
 
 	UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] Dawn Phase開始（総Wave数: %d）"), TotalWaves);
 
+	// WaveSpawnerSubsystemを初期化
+	if (WaveSpawnerSubsystem.IsValid())
+	{
+		// デフォルト敵データを設定
+		if (DefaultEnemyData)
+		{
+			WaveSpawnerSubsystem->SetDefaultEnemyData(DefaultEnemyData);
+			UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] デフォルト敵データを設定: %s"), *DefaultEnemyData->DisplayName.ToString());
+		}
+
+		// ウェーブ設定を生成
+		TArray<FWaveConfig> WaveConfigsArray;
+		for (int32 i = 0; i < TotalWaves; i++)
+		{
+			FWaveConfig Config;
+			Config.WaveNumber = i + 1;
+			Config.TotalEnemies = EnemiesPerWave.IsValidIndex(i) ? EnemiesPerWave[i] : 5;
+			Config.MaxConcurrentEnemies = FMath::Min(Config.TotalEnemies, 5);  // 同時に最大5体
+			Config.SpawnInterval = 2.0f;
+			Config.HealthMultiplier = 1.0f + (i * 0.2f);  // ウェーブごとにHP増加
+			Config.DamageMultiplier = 1.0f + (i * 0.1f);  // ウェーブごとにダメージ増加
+
+			WaveConfigsArray.Add(Config);
+		}
+
+		WaveSpawnerSubsystem->InitializeWaveSystem(WaveConfigsArray);
+
+		UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] WaveSpawnerSubsystemを初期化（%d ウェーブ）"), TotalWaves);
+	}
+
 	// BP側のイベント呼び出し
 	BP_OnDawnPhaseStarted();
 
@@ -271,7 +328,20 @@ void ADawnlightGameMode::StartNextWave()
 	// デリゲート発火
 	OnWaveStarted.Broadcast(CurrentWave);
 
-	// BP側のイベント呼び出し（敵スポーンはBPで実装）
+	// WaveSpawnerSubsystemでウェーブを開始
+	if (WaveSpawnerSubsystem.IsValid())
+	{
+		if (CurrentWave == 1)
+		{
+			WaveSpawnerSubsystem->StartFirstWave();
+		}
+		else
+		{
+			WaveSpawnerSubsystem->StartNextWave();
+		}
+	}
+
+	// BP側のイベント呼び出し（追加のカスタマイズ用）
 	BP_OnWaveStarted(CurrentWave, EnemyCount);
 }
 
@@ -304,16 +374,11 @@ void ADawnlightGameMode::CheckWaveCompletion()
 	// BP側のイベント呼び出し
 	BP_OnWaveCompleted(CurrentWave);
 
-	// 次のWaveへ
+	// 次のWaveへ（最終Wave以外はアップグレード選択を挟む）
 	if (CurrentWave < TotalWaves)
 	{
-		GetWorld()->GetTimerManager().SetTimer(
-			WaveIntervalTimerHandle,
-			this,
-			&ADawnlightGameMode::StartNextWave,
-			WaveInterval,
-			false
-		);
+		// アップグレード選択画面を表示
+		ShowUpgradeSelection(CurrentWave);
 	}
 	else
 	{
@@ -603,4 +668,186 @@ void ADawnlightGameMode::ApplyCollectedSoulBuffs()
 
 	int32 TotalSouls = SoulCollectionSubsystem->GetTotalSoulCount();
 	UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] 収集した魂のバフを適用完了（総魂数: %d）"), TotalSouls);
+}
+
+// ========================================================================
+// アップグレード選択
+// ========================================================================
+
+void ADawnlightGameMode::InitializeUpgradeWidgets()
+{
+	APlayerController* PC = GetWorld()->GetFirstPlayerController();
+	if (!PC)
+	{
+		return;
+	}
+
+	// アップグレード選択ウィジェットを作成
+	if (UpgradeSelectionWidgetClass && !UpgradeSelectionWidget)
+	{
+		UpgradeSelectionWidget = CreateWidget<UUpgradeSelectionWidget>(PC, UpgradeSelectionWidgetClass);
+		if (UpgradeSelectionWidget)
+		{
+			UpgradeSelectionWidget->AddToViewport(5);  // HUDより上、結果画面より下
+			UpgradeSelectionWidget->SetVisibility(ESlateVisibility::Collapsed);
+
+			// 選択完了イベントをバインド
+			UpgradeSelectionWidget->OnSelectionComplete.AddDynamic(this, &ADawnlightGameMode::OnUpgradeSelectionComplete);
+
+			UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] UpgradeSelectionWidget を作成"));
+		}
+	}
+
+	// セットボーナス表示ウィジェットを作成（HUDの一部として）
+	if (SetBonusDisplayWidgetClass && !SetBonusDisplayWidget)
+	{
+		SetBonusDisplayWidget = CreateWidget<USetBonusDisplayWidget>(PC, SetBonusDisplayWidgetClass);
+		if (SetBonusDisplayWidget)
+		{
+			SetBonusDisplayWidget->AddToViewport(1);  // HUDより下
+			SetBonusDisplayWidget->SetVisibility(ESlateVisibility::Collapsed);
+
+			UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] SetBonusDisplayWidget を作成"));
+		}
+	}
+}
+
+void ADawnlightGameMode::ShowUpgradeSelection(int32 WaveNumber)
+{
+	if (!UpgradeSelectionWidget || !UpgradeSubsystem.IsValid())
+	{
+		UE_LOG(LogDawnlight, Warning, TEXT("[SoulReaperGameMode] UpgradeSelectionWidget または UpgradeSubsystem が無効"));
+
+		// ウィジェットがなければ次のWaveを直接開始
+		GetWorld()->GetTimerManager().SetTimer(
+			WaveIntervalTimerHandle,
+			this,
+			&ADawnlightGameMode::StartNextWave,
+			WaveInterval,
+			false
+		);
+		return;
+	}
+
+	// アップグレード選択肢を生成
+	TArray<UUpgradeDataAsset*> Choices = UpgradeSubsystem->GenerateUpgradeChoices(WaveNumber, 3);
+
+	if (Choices.Num() == 0)
+	{
+		UE_LOG(LogDawnlight, Warning, TEXT("[SoulReaperGameMode] 利用可能なアップグレードがありません"));
+
+		// 選択肢がなければ次のWaveを直接開始
+		GetWorld()->GetTimerManager().SetTimer(
+			WaveIntervalTimerHandle,
+			this,
+			&ADawnlightGameMode::StartNextWave,
+			WaveInterval,
+			false
+		);
+		return;
+	}
+
+	// ウィジェットに選択肢を渡して表示
+	UpgradeSelectionWidget->ShowWithChoices(Choices, WaveNumber);
+
+	UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] アップグレード選択画面を表示（Wave: %d）"), WaveNumber);
+}
+
+void ADawnlightGameMode::HideUpgradeSelection()
+{
+	if (UpgradeSelectionWidget)
+	{
+		UpgradeSelectionWidget->ClearAndHide();
+	}
+}
+
+void ADawnlightGameMode::OnUpgradeSelectionComplete(UUpgradeDataAsset* SelectedUpgrade)
+{
+	// ウィジェットを非表示
+	HideUpgradeSelection();
+
+	if (SelectedUpgrade)
+	{
+		UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] アップグレード選択完了: %s"),
+			*SelectedUpgrade->DisplayName.ToString());
+	}
+	else
+	{
+		UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] アップグレードをスキップ"));
+	}
+
+	// 次のWaveを開始
+	GetWorld()->GetTimerManager().SetTimer(
+		WaveIntervalTimerHandle,
+		this,
+		&ADawnlightGameMode::StartNextWave,
+		WaveInterval,
+		false
+	);
+}
+
+// ========================================================================
+// WaveSpawnerSubsystem コールバック
+// ========================================================================
+
+void ADawnlightGameMode::OnWaveSpawnerWaveCompleted(int32 WaveNumber, bool bSuccess)
+{
+	UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] WaveSpawnerからウェーブ完了通知: Wave %d, 成功: %s"),
+		WaveNumber, bSuccess ? TEXT("はい") : TEXT("いいえ"));
+
+	if (!bSuccess)
+	{
+		// ウェーブ失敗時はゲームオーバー
+		OnPlayerDeath();
+		return;
+	}
+
+	// GameModeのウェーブ完了デリゲートを発火
+	OnWaveCompleted.Broadcast(WaveNumber);
+
+	// BP側のイベント呼び出し
+	BP_OnWaveCompleted(WaveNumber);
+
+	// 次のWaveへ（最終Wave以外はアップグレード選択を挟む）
+	if (WaveNumber < TotalWaves)
+	{
+		// アップグレード選択画面を表示
+		ShowUpgradeSelection(WaveNumber);
+	}
+	// 最終ウェーブ完了は OnWaveSpawnerAllWavesCompleted で処理
+}
+
+void ADawnlightGameMode::OnWaveSpawnerAllWavesCompleted()
+{
+	UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] WaveSpawnerから全ウェーブ完了通知"));
+
+	// ゲームクリア処理
+	OnGameCleared();
+}
+
+void ADawnlightGameMode::OnWaveSpawnerEnemyKilled(AEnemyCharacter* Enemy)
+{
+	if (CurrentPhase != EGamePhase::Dawn)
+	{
+		return;
+	}
+
+	// WaveSpawnerSubsystemから残り敵数を取得して同期
+	if (WaveSpawnerSubsystem.IsValid())
+	{
+		RemainingEnemies = WaveSpawnerSubsystem->GetRemainingEnemiesInWave();
+	}
+	else
+	{
+		// フォールバック: ローカルカウントを減らす
+		if (RemainingEnemies > 0)
+		{
+			RemainingEnemies--;
+		}
+	}
+
+	UE_LOG(LogDawnlight, Verbose, TEXT("[SoulReaperGameMode] 敵撃破（WaveSpawner経由） - 残り: %d"), RemainingEnemies);
+
+	// 注: ウェーブ完了判定はWaveSpawnerSubsystem内で行われ、
+	// OnWaveSpawnerWaveCompleted コールバックで通知される
 }

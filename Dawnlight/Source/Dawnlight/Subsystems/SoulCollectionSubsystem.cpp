@@ -15,6 +15,10 @@ void USoulCollectionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
+	// デフォルト設定を初期化
+	InitializeDefaultComboThresholds();
+	InitializeDefaultSetBonuses();
+
 	UE_LOG(LogDawnlight, Log, TEXT("SoulCollectionSubsystem: 初期化完了"));
 }
 
@@ -24,6 +28,9 @@ void USoulCollectionSubsystem::Deinitialize()
 	ClearSouls();
 	SoulDataMap.Empty();
 	AppliedBuffs.Empty();
+	ComboInfo = FComboKillInfo();
+	SetBonusDefinitions.Empty();
+	AchievedSetBonuses.Empty();
 
 	Super::Deinitialize();
 
@@ -73,6 +80,9 @@ bool USoulCollectionSubsystem::CollectSoulFromData(const USoulDataAsset* SoulDat
 	// 魂をコレクションに追加
 	CollectedSouls.AddSoul(SoulData->SoulTag, 1);
 
+	// 新しいカウントを取得
+	const int32 NewCount = GetSoulCount(SoulData->SoulTag);
+
 	// プレイヤーキャラクターのリーパーゲージを増加
 	if (APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0))
 	{
@@ -81,6 +91,9 @@ bool USoulCollectionSubsystem::CollectSoulFromData(const USoulDataAsset* SoulDat
 			PlayerCharacter->AddReaperGauge(SoulData->ReaperGaugeGain);
 		}
 	}
+
+	// セットボーナスの達成をチェック
+	CheckSetBonusAchievement(SoulData->SoulTag, NewCount);
 
 	// イベントデータを作成
 	FSoulCollectedEventData EventData;
@@ -91,8 +104,8 @@ bool USoulCollectionSubsystem::CollectSoulFromData(const USoulDataAsset* SoulDat
 	// デリゲートを発火
 	OnSoulCollected.Broadcast(EventData);
 
-	UE_LOG(LogDawnlight, Log, TEXT("SoulCollectionSubsystem: 魂を収集 - %s (総数: %d, ゲージ+%.0f)"),
-		*SoulData->DisplayNameEN, EventData.TotalSoulCount, SoulData->ReaperGaugeGain);
+	UE_LOG(LogDawnlight, Log, TEXT("SoulCollectionSubsystem: 魂を収集 - %s (個数: %d, 総数: %d, ゲージ+%.0f)"),
+		*SoulData->DisplayNameEN, NewCount, EventData.TotalSoulCount, SoulData->ReaperGaugeGain);
 
 	return true;
 }
@@ -407,4 +420,207 @@ const USoulDataAsset* USoulCollectionSubsystem::GetRandomSoulData() const
 	TArray<TObjectPtr<USoulDataAsset>> Values;
 	SoulDataMap.GenerateValueArray(Values);
 	return Values.Num() > 0 ? Values[0] : nullptr;
+}
+
+// ========================================================================
+// コンボキルシステム
+// ========================================================================
+
+int32 USoulCollectionSubsystem::RecordKill(const FVector& KillLocation)
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0;
+	}
+
+	const float CurrentTime = World->GetTimeSeconds();
+	const float TimeSinceLastKill = CurrentTime - ComboInfo.LastKillTime;
+
+	// コンボがタイムアウトしていないかチェック
+	if (ComboInfo.CurrentCombo > 0 && TimeSinceLastKill > ComboTimeout)
+	{
+		// コンボリセット
+		ResetCombo();
+	}
+
+	// コンボを増加
+	ComboInfo.CurrentCombo++;
+	ComboInfo.LastKillTime = CurrentTime;
+
+	// 最大コンボを更新
+	if (ComboInfo.CurrentCombo > ComboInfo.MaxCombo)
+	{
+		ComboInfo.MaxCombo = ComboInfo.CurrentCombo;
+	}
+
+	// コンボボーナスを計算
+	int32 BonusSouls = 0;
+	for (const auto& Threshold : ComboThresholds)
+	{
+		if (ComboInfo.CurrentCombo >= Threshold.Key)
+		{
+			BonusSouls = FMath::Max(BonusSouls, Threshold.Value);
+		}
+	}
+
+	// ボーナス魂を記録
+	ComboInfo.BonusSoulsFromCombo += BonusSouls;
+
+	// デリゲートを発火
+	OnComboUpdated.Broadcast(ComboInfo.CurrentCombo, BonusSouls);
+
+	UE_LOG(LogDawnlight, Log, TEXT("SoulCollectionSubsystem: キル記録 - コンボ: %d, ボーナス魂: %d"),
+		ComboInfo.CurrentCombo, BonusSouls);
+
+	return BonusSouls;
+}
+
+void USoulCollectionSubsystem::ResetCombo()
+{
+	if (ComboInfo.CurrentCombo > 0)
+	{
+		UE_LOG(LogDawnlight, Log, TEXT("SoulCollectionSubsystem: コンボリセット (最終コンボ: %d, 累計ボーナス: %d)"),
+			ComboInfo.CurrentCombo, ComboInfo.BonusSoulsFromCombo);
+	}
+
+	ComboInfo.CurrentCombo = 0;
+	// MaxComboとBonusSoulsFromComboはセッション中維持
+}
+
+// ========================================================================
+// ソウルセットボーナス
+// ========================================================================
+
+TArray<FSoulSetBonus> USoulCollectionSubsystem::GetActiveSetBonuses(const FGameplayTag& SoulTag) const
+{
+	TArray<FSoulSetBonus> ActiveBonuses;
+
+	const TArray<FSoulSetBonus>* Bonuses = SetBonusDefinitions.Find(SoulTag);
+	if (!Bonuses)
+	{
+		return ActiveBonuses;
+	}
+
+	const int32 CurrentCount = GetSoulCount(SoulTag);
+
+	for (const FSoulSetBonus& Bonus : *Bonuses)
+	{
+		if (CurrentCount >= Bonus.RequiredCount)
+		{
+			ActiveBonuses.Add(Bonus);
+		}
+	}
+
+	return ActiveBonuses;
+}
+
+TMap<FGameplayTag, FSoulSetBonus> USoulCollectionSubsystem::GetAllActiveSetBonuses() const
+{
+	TMap<FGameplayTag, FSoulSetBonus> AllActiveBonuses;
+
+	for (const auto& Pair : SetBonusDefinitions)
+	{
+		const FGameplayTag& SoulTag = Pair.Key;
+		const int32 CurrentCount = GetSoulCount(SoulTag);
+
+		// 最も高いアクティブなボーナスを取得
+		const FSoulSetBonus* HighestBonus = nullptr;
+		for (const FSoulSetBonus& Bonus : Pair.Value)
+		{
+			if (CurrentCount >= Bonus.RequiredCount)
+			{
+				if (!HighestBonus || Bonus.RequiredCount > HighestBonus->RequiredCount)
+				{
+					HighestBonus = &Bonus;
+				}
+			}
+		}
+
+		if (HighestBonus)
+		{
+			AllActiveBonuses.Add(SoulTag, *HighestBonus);
+		}
+	}
+
+	return AllActiveBonuses;
+}
+
+void USoulCollectionSubsystem::RegisterSetBonus(const FGameplayTag& SoulTag, const FSoulSetBonus& Bonus)
+{
+	TArray<FSoulSetBonus>& Bonuses = SetBonusDefinitions.FindOrAdd(SoulTag);
+	Bonuses.Add(Bonus);
+
+	// RequiredCount順にソート
+	Bonuses.Sort([](const FSoulSetBonus& A, const FSoulSetBonus& B)
+	{
+		return A.RequiredCount < B.RequiredCount;
+	});
+
+	UE_LOG(LogDawnlight, Log, TEXT("SoulCollectionSubsystem: セットボーナス登録 - %s (必要数: %d)"),
+		*Bonus.BonusName.ToString(), Bonus.RequiredCount);
+}
+
+// ========================================================================
+// 内部関数
+// ========================================================================
+
+void USoulCollectionSubsystem::InitializeDefaultComboThresholds()
+{
+	// GDD準拠: コンボキルボーナス
+	// 3キルコンボ: +1魂
+	// 5キルコンボ: +2魂
+	// 10キルコンボ: +5魂
+	ComboThresholds.Empty();
+	ComboThresholds.Add(3, 1);
+	ComboThresholds.Add(5, 2);
+	ComboThresholds.Add(10, 5);
+
+	UE_LOG(LogDawnlight, Log, TEXT("SoulCollectionSubsystem: デフォルトコンボ閾値を初期化"));
+}
+
+void USoulCollectionSubsystem::InitializeDefaultSetBonuses()
+{
+	// GDD準拠: ソウルセットボーナス
+	// 同じ種類の魂を3/5/8個集めるとボーナス発動
+
+	// 注: 魂タグは実際のGameplayTagに依存
+	// ここではデフォルトのセットボーナス効果を定義
+	// 実際のボーナスはSoulDataAssetから登録されることを想定
+
+	UE_LOG(LogDawnlight, Log, TEXT("SoulCollectionSubsystem: デフォルトセットボーナスを初期化"));
+}
+
+void USoulCollectionSubsystem::CheckSetBonusAchievement(const FGameplayTag& SoulTag, int32 NewCount)
+{
+	const TArray<FSoulSetBonus>* Bonuses = SetBonusDefinitions.Find(SoulTag);
+	if (!Bonuses)
+	{
+		return;
+	}
+
+	for (const FSoulSetBonus& Bonus : *Bonuses)
+	{
+		// ちょうど閾値に達した時のみ通知
+		if (NewCount == Bonus.RequiredCount)
+		{
+			// 重複通知を防ぐ
+			const FString BonusKey = MakeSetBonusKey(SoulTag, Bonus.RequiredCount);
+			if (!AchievedSetBonuses.Contains(BonusKey))
+			{
+				AchievedSetBonuses.Add(BonusKey);
+
+				// デリゲートを発火
+				OnSetBonusAchieved.Broadcast(SoulTag, Bonus);
+
+				UE_LOG(LogDawnlight, Log, TEXT("SoulCollectionSubsystem: セットボーナス達成! %s - %s"),
+					*SoulTag.ToString(), *Bonus.BonusName.ToString());
+			}
+		}
+	}
+}
+
+FString USoulCollectionSubsystem::MakeSetBonusKey(const FGameplayTag& SoulTag, int32 RequiredCount) const
+{
+	return FString::Printf(TEXT("%s_%d"), *SoulTag.ToString(), RequiredCount);
 }

@@ -14,7 +14,10 @@ public class Dawnlight : ModuleRules
 		{
 			ModuleDirectory,  // ルートディレクトリ（Dawnlight.h用）
 			Path.Combine(ModuleDirectory, "Abilities"),
+			Path.Combine(ModuleDirectory, "Actors"),
+			Path.Combine(ModuleDirectory, "AI"),
 			Path.Combine(ModuleDirectory, "Characters"),
+			Path.Combine(ModuleDirectory, "Combat"),
 			Path.Combine(ModuleDirectory, "Components"),
 			Path.Combine(ModuleDirectory, "Core"),
 			Path.Combine(ModuleDirectory, "Data"),
@@ -35,7 +38,9 @@ public class Dawnlight : ModuleRules
 			"GameplayTags",
 			"GameplayTasks",
 			"NetCore",
-			"Niagara"
+			"Niagara",
+			"AIModule",
+			"NavigationSystem"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]

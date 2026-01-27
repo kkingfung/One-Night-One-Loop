@@ -1,4 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Soul Reaper - Dawnlight Project
+// Copyright (c) 2025. All Rights Reserved.
 
 #pragma once
 
@@ -79,6 +80,14 @@ public:
 	/** 全ての動物を削除 */
 	UFUNCTION(BlueprintCallable, Category = "動物スポーン")
 	void DespawnAllAnimals();
+
+	/**
+	 * ランダムな動物を1体スポーン
+	 * @return スポーン成功時 true
+	 * @note SpawnConfigsが設定されている必要があります
+	 */
+	UFUNCTION(BlueprintCallable, Category = "動物スポーン")
+	bool SpawnRandomAnimal();
 
 	// ========================================================================
 	// スポーンポイント

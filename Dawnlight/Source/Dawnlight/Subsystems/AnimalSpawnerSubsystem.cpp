@@ -1,4 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Soul Reaper - Dawnlight Project
+// Copyright (c) 2025. All Rights Reserved.
 
 #include "AnimalSpawnerSubsystem.h"
 #include "Dawnlight.h"
@@ -150,6 +151,41 @@ void UAnimalSpawnerSubsystem::DespawnAllAnimals()
 	AliveAnimals.Empty();
 
 	UE_LOG(LogDawnlight, Log, TEXT("[AnimalSpawnerSubsystem] 全動物削除"));
+}
+
+bool UAnimalSpawnerSubsystem::SpawnRandomAnimal()
+{
+	if (SpawnConfigs.Num() == 0)
+	{
+		UE_LOG(LogDawnlight, Warning, TEXT("[AnimalSpawnerSubsystem] SpawnRandomAnimal: スポーン設定がありません"));
+		return false;
+	}
+
+	// 有効な設定からランダムに選択
+	TArray<const FAnimalSpawnConfig*> ValidConfigs;
+	for (const FAnimalSpawnConfig& Config : SpawnConfigs)
+	{
+		if (Config.SoulData)
+		{
+			ValidConfigs.Add(&Config);
+		}
+	}
+
+	if (ValidConfigs.Num() == 0)
+	{
+		UE_LOG(LogDawnlight, Warning, TEXT("[AnimalSpawnerSubsystem] SpawnRandomAnimal: 有効なスポーン設定がありません"));
+		return false;
+	}
+
+	// ランダムに設定を選択
+	const int32 RandomIndex = FMath::RandRange(0, ValidConfigs.Num() - 1);
+	const FAnimalSpawnConfig* SelectedConfig = ValidConfigs[RandomIndex];
+
+	// ランダムな位置にスポーン
+	const FVector SpawnLocation = GetRandomSpawnLocation();
+	AAnimalCharacter* SpawnedAnimal = SpawnAnimal(SelectedConfig->SoulData, SpawnLocation);
+
+	return SpawnedAnimal != nullptr;
 }
 
 void UAnimalSpawnerSubsystem::AddSpawnPoint(const FVector& Location)

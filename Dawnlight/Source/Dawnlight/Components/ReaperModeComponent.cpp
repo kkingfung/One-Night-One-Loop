@@ -1,4 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Soul Reaper - Dawnlight Project
+// Copyright (c) 2025. All Rights Reserved.
 
 #include "ReaperModeComponent.h"
 #include "Dawnlight.h"
@@ -105,28 +106,32 @@ bool UReaperModeComponent::ActivateReaperMode()
 	ResetReaperGauge();
 
 	// 発動エフェクト
-	if (ActivationEffect)
+	AActor* Owner = GetOwner();
+	if (ActivationEffect && Owner)
 	{
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 			this,
 			ActivationEffect,
-			GetOwner()->GetActorLocation(),
-			GetOwner()->GetActorRotation()
+			Owner->GetActorLocation(),
+			Owner->GetActorRotation()
 		);
 	}
 
 	// 常時エフェクト開始
-	if (ActiveEffect)
+	if (ActiveEffect && Owner)
 	{
-		ActiveEffectComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
-			ActiveEffect,
-			Cast<ACharacter>(GetOwner())->GetRootComponent(),
-			NAME_None,
-			FVector::ZeroVector,
-			FRotator::ZeroRotator,
-			EAttachLocation::KeepRelativeOffset,
-			true
-		);
+		if (USceneComponent* RootComp = Owner->GetRootComponent())
+		{
+			ActiveEffectComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
+				ActiveEffect,
+				RootComp,
+				NAME_None,
+				FVector::ZeroVector,
+				FRotator::ZeroRotator,
+				EAttachLocation::KeepRelativeOffset,
+				true
+			);
+		}
 	}
 
 	// 持続時間タイマー開始

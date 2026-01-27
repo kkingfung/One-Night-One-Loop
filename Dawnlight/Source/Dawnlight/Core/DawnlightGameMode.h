@@ -1,4 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Soul Reaper - Dawnlight Project
+// Copyright (c) 2025. All Rights Reserved.
 
 #pragma once
 
@@ -11,6 +12,7 @@ class UNightProgressSubsystem;
 class USoulCollectionSubsystem;
 class UUpgradeSubsystem;
 class UWaveSpawnerSubsystem;
+class UAnimalSpawnerSubsystem;
 class UGameplayHUDWidget;
 class UGameResultWidget;
 class UUpgradeSelectionWidget;
@@ -104,8 +106,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Wave")
 	int32 GetRemainingEnemies() const { return RemainingEnemies; }
 
-	/** 敵を倒した時に呼び出す */
-	UFUNCTION(BlueprintCallable, Category = "Wave")
+	/**
+	 * 敵を倒した時に呼び出す
+	 * @note WaveSpawnerSubsystem経由での敵撃破通知を推奨。
+	 *       直接呼び出しは非推奨（WaveSpawnerと二重カウントになる可能性あり）
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Wave", meta = (DeprecatedFunction, DeprecationMessage = "Use WaveSpawnerSubsystem's enemy kill tracking instead"))
 	void OnEnemyKilled();
 
 	// ========================================================================
@@ -364,6 +370,9 @@ private:
 
 	UPROPERTY()
 	TWeakObjectPtr<UWaveSpawnerSubsystem> WaveSpawnerSubsystem;
+
+	UPROPERTY()
+	TWeakObjectPtr<UAnimalSpawnerSubsystem> AnimalSpawnerSubsystem;
 
 	// ========================================================================
 	// ウィジェット参照

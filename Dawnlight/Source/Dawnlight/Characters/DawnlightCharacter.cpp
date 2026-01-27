@@ -1,4 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Soul Reaper - Dawnlight Project
+// Copyright (c) 2025. All Rights Reserved.
 
 #include "DawnlightCharacter.h"
 #include "Dawnlight.h"
@@ -193,23 +194,33 @@ void ADawnlightCharacter::PerformLightAttack()
 
 	bIsAttacking = true;
 
+	// 既存のタイマーをクリア
+	GetWorldTimerManager().ClearTimer(AttackEndTimerHandle);
+
 	// モンタージュ再生（設定されていれば）
+	float AttackDuration = 0.5f;
 	if (LightAttackMontage)
 	{
 		// 攻撃速度はAttributeSetから取得（ReaperModeComponent経由でバフが適用済み）
 		const float AttackSpeed = AttributeSet ? AttributeSet->GetAttackSpeed() : 1.0f;
-		PlayAnimMontage(LightAttackMontage, AttackSpeed);
+		const float MontageLength = PlayAnimMontage(LightAttackMontage, AttackSpeed);
+		if (MontageLength > 0.0f)
+		{
+			AttackDuration = MontageLength / AttackSpeed;
+		}
 	}
 
-	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: Light Attack performed"));
+	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: Light Attack performed (duration: %.2f)"), AttackDuration);
 
-	// TODO: AnimNotifyでbIsAttacking = falseにする
-	// 暫定: タイマーで攻撃終了
-	FTimerHandle AttackTimerHandle;
-	GetWorldTimerManager().SetTimer(AttackTimerHandle, [this]()
-	{
-		bIsAttacking = false;
-	}, 0.5f, false);
+	// タイマーで攻撃終了（モンタージュのブレンドアウトを考慮）
+	// TODO: AnimNotifyState で攻撃判定、OnMontageBlendingOut で攻撃状態終了に移行推奨
+	GetWorldTimerManager().SetTimer(
+		AttackEndTimerHandle,
+		this,
+		&ADawnlightCharacter::EndAttack,
+		AttackDuration * 0.9f,  // ブレンド開始前に終了
+		false
+	);
 }
 
 void ADawnlightCharacter::PerformHeavyAttack()
@@ -221,22 +232,32 @@ void ADawnlightCharacter::PerformHeavyAttack()
 
 	bIsAttacking = true;
 
+	// 既存のタイマーをクリア
+	GetWorldTimerManager().ClearTimer(AttackEndTimerHandle);
+
 	// モンタージュ再生（設定されていれば）
+	float AttackDuration = 0.8f;
 	if (HeavyAttackMontage)
 	{
 		// 攻撃速度はAttributeSetから取得（ReaperModeComponent経由でバフが適用済み）
 		const float AttackSpeed = AttributeSet ? AttributeSet->GetAttackSpeed() : 1.0f;
-		PlayAnimMontage(HeavyAttackMontage, AttackSpeed);
+		const float MontageLength = PlayAnimMontage(HeavyAttackMontage, AttackSpeed);
+		if (MontageLength > 0.0f)
+		{
+			AttackDuration = MontageLength / AttackSpeed;
+		}
 	}
 
-	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: Heavy Attack performed"));
+	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: Heavy Attack performed (duration: %.2f)"), AttackDuration);
 
-	// 暫定: タイマーで攻撃終了
-	FTimerHandle AttackTimerHandle;
-	GetWorldTimerManager().SetTimer(AttackTimerHandle, [this]()
-	{
-		bIsAttacking = false;
-	}, 0.8f, false);
+	// タイマーで攻撃終了
+	GetWorldTimerManager().SetTimer(
+		AttackEndTimerHandle,
+		this,
+		&ADawnlightCharacter::EndAttack,
+		AttackDuration * 0.9f,
+		false
+	);
 }
 
 void ADawnlightCharacter::PerformSpecialAttack()
@@ -248,22 +269,32 @@ void ADawnlightCharacter::PerformSpecialAttack()
 
 	bIsAttacking = true;
 
+	// 既存のタイマーをクリア
+	GetWorldTimerManager().ClearTimer(AttackEndTimerHandle);
+
 	// モンタージュ再生（設定されていれば）
+	float AttackDuration = 0.7f;
 	if (SpecialAttackMontage)
 	{
 		// 攻撃速度はAttributeSetから取得（ReaperModeComponent経由でバフが適用済み）
 		const float AttackSpeed = AttributeSet ? AttributeSet->GetAttackSpeed() : 1.0f;
-		PlayAnimMontage(SpecialAttackMontage, AttackSpeed);
+		const float MontageLength = PlayAnimMontage(SpecialAttackMontage, AttackSpeed);
+		if (MontageLength > 0.0f)
+		{
+			AttackDuration = MontageLength / AttackSpeed;
+		}
 	}
 
-	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: Special Attack performed"));
+	UE_LOG(LogDawnlight, Log, TEXT("SoulReaper: Special Attack performed (duration: %.2f)"), AttackDuration);
 
-	// 暫定: タイマーで攻撃終了
-	FTimerHandle AttackTimerHandle;
-	GetWorldTimerManager().SetTimer(AttackTimerHandle, [this]()
-	{
-		bIsAttacking = false;
-	}, 0.7f, false);
+	// タイマーで攻撃終了
+	GetWorldTimerManager().SetTimer(
+		AttackEndTimerHandle,
+		this,
+		&ADawnlightCharacter::EndAttack,
+		AttackDuration * 0.9f,
+		false
+	);
 }
 
 bool ADawnlightCharacter::IsAttacking() const
@@ -361,6 +392,10 @@ void ADawnlightCharacter::HandleDeath()
 	}
 
 	bIsDead = true;
+	bIsAttacking = false;
+
+	// タイマーをクリア
+	GetWorldTimerManager().ClearTimer(AttackEndTimerHandle);
 
 	// リーパーモードを強制終了
 	if (ReaperModeComponent)
@@ -372,6 +407,12 @@ void ADawnlightCharacter::HandleDeath()
 	OnPlayerDeath.Broadcast();
 
 	UE_LOG(LogDawnlight, Warning, TEXT("SoulReaper: PLAYER DIED!"));
+}
+
+void ADawnlightCharacter::EndAttack()
+{
+	bIsAttacking = false;
+	UE_LOG(LogDawnlight, Verbose, TEXT("SoulReaper: Attack ended"));
 }
 
 // ============================================================================

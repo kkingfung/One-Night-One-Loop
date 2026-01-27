@@ -1,4 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Soul Reaper - Dawnlight Project
+// Copyright (c) 2025. All Rights Reserved.
 
 #pragma once
 
@@ -45,9 +46,9 @@ struct DAWNLIGHT_API FSoulCollectedEventData
 {
 	GENERATED_BODY()
 
-	/** 収集した魂のデータ */
+	/** 収集した魂のデータ（読み取り専用参照） */
 	UPROPERTY(BlueprintReadOnly, Category = "魂")
-	TObjectPtr<const USoulDataAsset> SoulData = nullptr;
+	TObjectPtr<USoulDataAsset> SoulData = nullptr;
 
 	/** 収集位置 */
 	UPROPERTY(BlueprintReadOnly, Category = "魂")

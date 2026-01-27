@@ -1,4 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Soul Reaper - Dawnlight Project
+// Copyright (c) 2025. All Rights Reserved.
 
 #include "SoulCollectionSubsystem.h"
 #include "Dawnlight.h"
@@ -97,7 +98,7 @@ bool USoulCollectionSubsystem::CollectSoulFromData(const USoulDataAsset* SoulDat
 
 	// イベントデータを作成
 	FSoulCollectedEventData EventData;
-	EventData.SoulData = SoulData;
+	EventData.SoulData = const_cast<USoulDataAsset*>(SoulData);
 	EventData.CollectionLocation = CollectionLocation;
 	EventData.TotalSoulCount = GetTotalSoulCount();
 
@@ -275,6 +276,10 @@ void USoulCollectionSubsystem::ApplyBuffEffect(UDawnlightAttributeSet* Attribute
 		// リーパーゲージを直接増加
 		AttributeSet->SetReaperGauge(AttributeSet->GetReaperGauge() + Buff.BuffAmount);
 		break;
+
+	default:
+		UE_LOG(LogDawnlight, Warning, TEXT("SoulCollectionSubsystem: 未処理のバフタイプ: %d"), static_cast<int32>(Buff.BuffType));
+		break;
 	}
 }
 
@@ -315,6 +320,10 @@ void USoulCollectionSubsystem::RemoveBuffEffect(UDawnlightAttributeSet* Attribut
 
 	case ESoulBuffType::ReaperGauge:
 		// リーパーゲージは除去しない（一度増えたら減らない）
+		break;
+
+	default:
+		// 未知のバフタイプは無視
 		break;
 	}
 }

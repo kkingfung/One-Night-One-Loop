@@ -1,4 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Soul Reaper - Dawnlight Project
+// Copyright (c) 2025. All Rights Reserved.
 
 #include "WaveSpawnerSubsystem.h"
 #include "Dawnlight.h"
@@ -128,7 +129,10 @@ void UWaveSpawnerSubsystem::EndCurrentWave(bool bSuccess)
 
 void UWaveSpawnerSubsystem::StopAllWaves()
 {
-	GetWorld()->GetTimerManager().ClearTimer(SpawnTimerHandle);
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(SpawnTimerHandle);
+	}
 
 	// 生存中の敵を全て削除
 	for (const TWeakObjectPtr<AEnemyCharacter>& Enemy : AliveEnemies)
@@ -274,16 +278,19 @@ FVector UWaveSpawnerSubsystem::GetRandomSpawnLocation() const
 		// スポーンポイントがない場合はプレイヤーの周囲にランダムスポーン
 		if (UWorld* World = GetWorld())
 		{
-			if (APawn* Player = World->GetFirstPlayerController()->GetPawn())
+			if (APlayerController* PC = World->GetFirstPlayerController())
 			{
-				const float SpawnDistance = 800.0f;
-				const float RandomAngle = FMath::FRandRange(0.0f, 360.0f);
+				if (APawn* Player = PC->GetPawn())
+				{
+					const float SpawnDistance = 800.0f;
+					const float RandomAngle = FMath::FRandRange(0.0f, 360.0f);
 
-				return Player->GetActorLocation() + FVector(
-					FMath::Cos(FMath::DegreesToRadians(RandomAngle)) * SpawnDistance,
-					FMath::Sin(FMath::DegreesToRadians(RandomAngle)) * SpawnDistance,
-					0.0f
-				);
+					return Player->GetActorLocation() + FVector(
+						FMath::Cos(FMath::DegreesToRadians(RandomAngle)) * SpawnDistance,
+						FMath::Sin(FMath::DegreesToRadians(RandomAngle)) * SpawnDistance,
+						0.0f
+					);
+				}
 			}
 		}
 		return FVector::ZeroVector;

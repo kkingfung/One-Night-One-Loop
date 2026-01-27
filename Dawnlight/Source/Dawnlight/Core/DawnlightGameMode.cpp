@@ -1,6 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Soul Reaper - Dawnlight Project
+// Copyright (c) 2025. All Rights Reserved.
 
 #include "DawnlightGameMode.h"
+#include "Subsystems/AnimalSpawnerSubsystem.h"
 #include "Dawnlight.h"
 #include "Subsystems/NightProgressSubsystem.h"
 #include "Subsystems/SoulCollectionSubsystem.h"
@@ -131,6 +133,12 @@ void ADawnlightGameMode::InitializeSubsystems()
 			WaveSpawnerSubsystem->OnAllWavesCompleted.AddDynamic(this, &ADawnlightGameMode::OnWaveSpawnerAllWavesCompleted);
 			WaveSpawnerSubsystem->OnEnemyKilled.AddDynamic(this, &ADawnlightGameMode::OnWaveSpawnerEnemyKilled);
 		}
+
+		AnimalSpawnerSubsystem = World->GetSubsystem<UAnimalSpawnerSubsystem>();
+		if (AnimalSpawnerSubsystem.IsValid())
+		{
+			UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] AnimalSpawnerSubsystem を取得"));
+		}
 	}
 
 	// アップグレードウィジェットを初期化
@@ -203,6 +211,13 @@ void ADawnlightGameMode::EndNightPhase()
 
 void ADawnlightGameMode::StartDawnTransition()
 {
+	// 既に遷移中または Dawn Phase の場合はスキップ
+	if (CurrentPhase == EGamePhase::DawnTransition || CurrentPhase == EGamePhase::Dawn)
+	{
+		UE_LOG(LogDawnlight, Warning, TEXT("[SoulReaperGameMode] Dawn Transitionは既に開始しているか、Dawn Phaseです"));
+		return;
+	}
+
 	SetPhase(EGamePhase::DawnTransition);
 
 	UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] Dawn Transition開始（%.1f秒）"), DawnTransitionDuration);
@@ -347,14 +362,25 @@ void ADawnlightGameMode::StartNextWave()
 
 void ADawnlightGameMode::OnEnemyKilled()
 {
+	// @deprecated: WaveSpawnerSubsystem経由での敵撃破管理を推奨
+	// この関数は後方互換性のために残されていますが、
+	// WaveSpawnerと二重カウントになる可能性があります。
+
 	if (CurrentPhase != EGamePhase::Dawn || RemainingEnemies <= 0)
 	{
 		return;
 	}
 
-	RemainingEnemies--;
+	// WaveSpawnerSubsystemが有効な場合は、そちらに処理を委譲
+	if (WaveSpawnerSubsystem.IsValid())
+	{
+		UE_LOG(LogDawnlight, Warning, TEXT("[SoulReaperGameMode] OnEnemyKilled()は非推奨です。WaveSpawnerSubsystem経由での敵撃破管理を使用してください。"));
+		return;
+	}
 
-	UE_LOG(LogDawnlight, Verbose, TEXT("[SoulReaperGameMode] 敵撃破 - 残り: %d"), RemainingEnemies);
+	// フォールバック: WaveSpawnerSubsystemがない場合のみローカルで処理
+	RemainingEnemies--;
+	UE_LOG(LogDawnlight, Verbose, TEXT("[SoulReaperGameMode] 敵撃破（フォールバック） - 残り: %d"), RemainingEnemies);
 
 	CheckWaveCompletion();
 }
@@ -609,19 +635,23 @@ void ADawnlightGameMode::SpawnAnimal()
 
 	if (CurrentAnimalCount >= MaxAnimalCount)
 	{
+		UE_LOG(LogDawnlight, Verbose, TEXT("[SoulReaperGameMode] 最大動物数に達しています（%d/%d）"), CurrentAnimalCount, MaxAnimalCount);
 		return;
 	}
 
-	if (!SoulCollectionSubsystem.IsValid())
+	// AnimalSpawnerSubsystemを使用してスポーン
+	if (AnimalSpawnerSubsystem.IsValid())
 	{
-		return;
+		if (AnimalSpawnerSubsystem->SpawnRandomAnimal())
+		{
+			CurrentAnimalCount++;
+			UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] 動物をスポーン（現在: %d/%d）"), CurrentAnimalCount, MaxAnimalCount);
+		}
 	}
-
-	// TODO: スポーンポイントを取得してランダムな位置にスポーン
-	// 現在はBPで実装することを想定
-	// SoulCollectionSubsystem->SpawnRandomAnimal(SpawnLocation);
-
-	UE_LOG(LogDawnlight, Verbose, TEXT("[SoulReaperGameMode] 動物スポーン処理（BPで実装予定）"));
+	else
+	{
+		UE_LOG(LogDawnlight, Warning, TEXT("[SoulReaperGameMode] AnimalSpawnerSubsystemが無効です"));
+	}
 }
 
 // ========================================================================

@@ -1,4 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Soul Reaper - Dawnlight Project
+// Copyright (c) 2025. All Rights Reserved.
 
 #pragma once
 
@@ -122,7 +123,7 @@ public:
  * セットボーナス段階データ
  */
 USTRUCT(BlueprintType)
-struct FSetBonusTier
+struct DAWNLIGHT_API FSetBonusTier
 {
 	GENERATED_BODY()
 

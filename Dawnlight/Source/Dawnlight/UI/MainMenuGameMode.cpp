@@ -5,6 +5,7 @@
 #include "Widgets/SettingsWidget.h"
 #include "Widgets/ConfirmationDialogWidget.h"
 #include "LevelTransitionSubsystem.h"
+#include "Subsystems/BGMSubsystem.h"
 #include "Dawnlight.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -34,6 +35,15 @@ void AMainMenuGameMode::BeginPlay()
 	CreateWidgets();
 	BindEvents();
 	ShowMainMenu();
+
+	// メインメニューBGMを再生
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UBGMSubsystem* BGMSubsystem = GameInstance->GetSubsystem<UBGMSubsystem>())
+		{
+			BGMSubsystem->PlayBGM(EBGMTrack::MainMenu, 2.0f);
+		}
+	}
 
 	UE_LOG(LogDawnlight, Log, TEXT("[MainMenuGameMode] メインメニュー開始"));
 }

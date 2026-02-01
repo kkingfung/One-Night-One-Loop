@@ -284,6 +284,9 @@ private:
 	/** 作業用設定データ（適用前） */
 	FDawnlightAllSettings WorkingSettings;
 
+	/** 元の設定データ（Backボタン押下時に復元） */
+	FDawnlightAllSettings OriginalSettings;
+
 	/** 現在選択中のカテゴリ */
 	ESettingsCategory CurrentCategory;
 

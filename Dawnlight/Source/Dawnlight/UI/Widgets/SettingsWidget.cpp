@@ -119,6 +119,8 @@ void USettingsWidget::RefreshFromCurrentSettings()
 		if (UUISubsystem* UISubsystem = GameInstance->GetSubsystem<UUISubsystem>())
 		{
 			WorkingSettings = UISubsystem->GetCurrentSettings();
+			// 元の設定を保存（Backボタンで復元するため）
+			OriginalSettings = WorkingSettings;
 		}
 	}
 
@@ -467,24 +469,60 @@ void USettingsWidget::OnMasterVolumeChanged(float Value)
 {
 	WorkingSettings.Audio.MasterVolume = Value;
 	UpdateVolumeText(MasterVolumeText, Value);
+
+	// 即座にプレビュー適用（Apply押さなくても聞こえるように）
+	if (UGameInstance* GameInstance = UGameplayStatics::GetGameInstance(this))
+	{
+		if (UUISubsystem* UISubsystem = GameInstance->GetSubsystem<UUISubsystem>())
+		{
+			UISubsystem->ApplySettings(WorkingSettings);
+		}
+	}
 }
 
 void USettingsWidget::OnMusicVolumeChanged(float Value)
 {
 	WorkingSettings.Audio.MusicVolume = Value;
 	UpdateVolumeText(MusicVolumeText, Value);
+
+	// 即座にプレビュー適用
+	if (UGameInstance* GameInstance = UGameplayStatics::GetGameInstance(this))
+	{
+		if (UUISubsystem* UISubsystem = GameInstance->GetSubsystem<UUISubsystem>())
+		{
+			UISubsystem->ApplySettings(WorkingSettings);
+		}
+	}
 }
 
 void USettingsWidget::OnSFXVolumeChanged(float Value)
 {
 	WorkingSettings.Audio.SFXVolume = Value;
 	UpdateVolumeText(SFXVolumeText, Value);
+
+	// 即座にプレビュー適用
+	if (UGameInstance* GameInstance = UGameplayStatics::GetGameInstance(this))
+	{
+		if (UUISubsystem* UISubsystem = GameInstance->GetSubsystem<UUISubsystem>())
+		{
+			UISubsystem->ApplySettings(WorkingSettings);
+		}
+	}
 }
 
 void USettingsWidget::OnAmbientVolumeChanged(float Value)
 {
 	WorkingSettings.Audio.AmbientVolume = Value;
 	UpdateVolumeText(AmbientVolumeText, Value);
+
+	// 即座にプレビュー適用
+	if (UGameInstance* GameInstance = UGameplayStatics::GetGameInstance(this))
+	{
+		if (UUISubsystem* UISubsystem = GameInstance->GetSubsystem<UUISubsystem>())
+		{
+			UISubsystem->ApplySettings(WorkingSettings);
+		}
+	}
 }
 
 // グラフィック設定ハンドラ
@@ -627,7 +665,10 @@ void USettingsWidget::OnApplyClicked()
 	{
 		if (UUISubsystem* UISubsystem = GameInstance->GetSubsystem<UUISubsystem>())
 		{
+			// 再度適用して、ディスクに保存
 			UISubsystem->ApplySettings(WorkingSettings);
+			// 現在の設定を新しい「元の設定」として保存
+			OriginalSettings = WorkingSettings;
 		}
 	}
 
@@ -638,6 +679,17 @@ void USettingsWidget::OnApplyClicked()
 void USettingsWidget::OnBackClicked()
 {
 	PlayUISound(BackSound);
+
+	// Apply押さずに戻る場合、元の設定に復元
+	if (UGameInstance* GameInstance = UGameplayStatics::GetGameInstance(this))
+	{
+		if (UUISubsystem* UISubsystem = GameInstance->GetSubsystem<UUISubsystem>())
+		{
+			UISubsystem->ApplySettings(OriginalSettings);
+			UE_LOG(LogDawnlight, Verbose, TEXT("[SettingsWidget] 設定を元に戻しました"));
+		}
+	}
+
 	OnSettingsCancelled.Broadcast();
 	UE_LOG(LogDawnlight, Log, TEXT("[SettingsWidget] 戻る"));
 }

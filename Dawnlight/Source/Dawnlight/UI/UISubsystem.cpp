@@ -3,6 +3,7 @@
 #include "UISubsystem.h"
 #include "DawnlightSaveGame.h"
 #include "Dawnlight.h"
+#include "Subsystems/BGMSubsystem.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameUserSettings.h"
 #include "AudioDevice.h"
@@ -348,15 +349,18 @@ void UUISubsystem::ApplyGraphicsToEngine(const FDawnlightGraphicsSettings& Setti
 
 void UUISubsystem::ApplyAudioToEngine(const FDawnlightAudioSettings& Settings)
 {
-	// サウンドクラスを使ったボリューム調整は、
-	// プロジェクトのSound Mix/Sound Classの設定に依存するため、
-	// Blueprintでの実装を推奨
-	// ここではログのみ出力
-	UE_LOG(LogDawnlight, Verbose, TEXT("[UISubsystem] オーディオ設定を更新: Master=%.2f"),
-		Settings.MasterVolume);
+	// BGMサブシステムにボリューム設定を適用
+	if (UBGMSubsystem* BGMSubsystem = GetGameInstance()->GetSubsystem<UBGMSubsystem>())
+	{
+		BGMSubsystem->SetMasterVolume(Settings.MasterVolume);
+		BGMSubsystem->SetMusicVolume(Settings.MusicVolume);
+	}
+
+	UE_LOG(LogDawnlight, Log, TEXT("[UISubsystem] オーディオ設定を適用: Master=%.2f, Music=%.2f, SFX=%.2f"),
+		Settings.MasterVolume, Settings.MusicVolume, Settings.SFXVolume);
 
 	// TODO: プロジェクトにSound Mixが設定されたら、ここで適用
-	// USoundMix/USoundClassを使用してボリュームを調整
+	// USoundMix/USoundClassを使用してSFXボリュームを調整
 }
 
 EWindowMode::Type UUISubsystem::ConvertWindowMode(EWindowModeType Mode) const

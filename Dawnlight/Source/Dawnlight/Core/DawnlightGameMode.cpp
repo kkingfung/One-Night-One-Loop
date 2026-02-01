@@ -3,6 +3,7 @@
 
 #include "DawnlightGameMode.h"
 #include "Subsystems/AnimalSpawnerSubsystem.h"
+#include "Subsystems/BGMSubsystem.h"
 #include "Dawnlight.h"
 #include "Subsystems/NightProgressSubsystem.h"
 #include "Subsystems/SoulCollectionSubsystem.h"
@@ -170,6 +171,15 @@ void ADawnlightGameMode::StartNightPhase()
 	// 時間をセット
 	NightPhaseTimeRemaining = NightPhaseDuration;
 
+	// 夜フェーズBGMを再生
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UBGMSubsystem* BGMSubsystem = GameInstance->GetSubsystem<UBGMSubsystem>())
+		{
+			BGMSubsystem->PlayBGM(EBGMTrack::Night, 2.0f);
+		}
+	}
+
 	// 魂コレクションをクリア
 	if (SoulCollectionSubsystem.IsValid())
 	{
@@ -251,6 +261,15 @@ void ADawnlightGameMode::StartDawnPhase()
 
 	// Wave初期化
 	CurrentWave = 0;
+
+	// 夜明けフェーズBGMを再生
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UBGMSubsystem* BGMSubsystem = GameInstance->GetSubsystem<UBGMSubsystem>())
+		{
+			BGMSubsystem->PlayBGM(EBGMTrack::Dawn, 2.0f);
+		}
+	}
 
 	UE_LOG(LogDawnlight, Log, TEXT("[SoulReaperGameMode] Dawn Phase開始（総Wave数: %d）"), TotalWaves);
 
